@@ -1,5 +1,5 @@
 """
-PLY file input/output operations for the red pillar detection pipeline.
+PLY file input/output operations.
 
 This module handles all PLY file reading and writing operations, including
 coordinate and color extraction, data type conversions, and file format
@@ -9,92 +9,8 @@ management.
 import numpy as np
 import time
 from typing import Tuple, Optional, Union, Dict
-from plyfile import PlyData, PlyElement
 import open3d as o3d
 from pathlib import Path
-
-
-# =============================================================================
-# PLYFILE-BASED PLY I/O FUNCTIONS
-# =============================================================================
-
-def load_ply_file_plyfile(file_path: str) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Load PLY file and extract coordinates and colors.
-
-    Args:
-        file_path: Path to PLY file
-
-    Returns:
-        Tuple of (points, colors) where:
-        - points: numpy array of shape (N, 3) with [x, y, z] coordinates
-        - colors: numpy array of shape (N, 3) with [r, g, b] colors (0-255)
-    """
-    print(f"Loading PLY file: {file_path}")
-    start_time = time.time()
-
-    try:
-        plydata = PlyData.read(file_path)
-        vertices = plydata['vertex']
-
-        # Extract coordinates (handle both float32 and double precision)
-        points = np.column_stack((
-            vertices['x'].astype(np.float64),
-            vertices['y'].astype(np.float64),
-            vertices['z'].astype(np.float64)
-        ))
-
-        # Extract colors (convert to uint8 if needed)
-        colors = np.column_stack((
-            vertices['red'].astype(np.uint8),
-            vertices['green'].astype(np.uint8),
-            vertices['blue'].astype(np.uint8)
-        ))
-
-        load_time = time.time() - start_time
-        print(f"Loaded {len(points):,} points in {load_time:.2f} seconds")
-        print(f"Point cloud bounds: X[{points[:, 0].min():.2f}, {points[:, 0].max():.2f}], "
-              f"Y[{points[:, 1].min():.2f}, {points[:, 1].max():.2f}], "
-              f"Z[{points[:, 2].min():.2f}, {points[:, 2].max():.2f}]")
-
-        return points, colors
-
-    except Exception as e:
-        raise RuntimeError(f"Failed to load PLY file {file_path}: {str(e)}")
-
-
-def save_ply_file_plyfile(file_path: str, points: np.ndarray, colors: np.ndarray) -> None:
-    """
-    Save points and colors to PLY file.
-
-    Args:
-        file_path: Output PLY file path
-        points: numpy array of shape (N, 3) with [x, y, z] coordinates
-        colors: numpy array of shape (N, 3) with [r, g, b] colors (0-255)
-    """
-    print(f"Saving output PLY file: {file_path}")
-    start_time = time.time()
-
-    try:
-        # Create vertex array with proper data types
-        vertex_data = np.array([
-            (points[i, 0], points[i, 1], points[i, 2],
-             colors[i, 0], colors[i, 1], colors[i, 2])
-            for i in range(len(points))
-        ], dtype=[
-            ('x', 'f8'), ('y', 'f8'), ('z', 'f8'),
-            ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')
-        ])
-
-        # Create PLY element and save
-        el = PlyElement.describe(vertex_data, 'vertex')
-        PlyData([el], text=True).write(file_path)
-
-        save_time = time.time() - start_time
-        print(f"Saved {len(points):,} points in {save_time:.2f} seconds")
-
-    except Exception as e:
-        raise RuntimeError(f"Failed to save PLY file {file_path}: {str(e)}")
 
 
 # =============================================================================
@@ -342,27 +258,22 @@ def validate_point_cloud(points: np.ndarray, colors: np.ndarray) -> bool:
     return True
 
 
-def get_point_cloud_info(file_path: str, use_open3d: bool = True) -> Dict[str, Union[int, float, str]]:
+def get_point_cloud_info(file_path: str) -> Dict[str, Union[int, float, str]]:
     """
     Get basic information about a PLY file without fully loading it.
 
     Args:
         file_path: Path to PLY file
-        use_open3d: Whether to use Open3D for loading (faster for large files)
 
     Returns:
         Dictionary with point cloud information
     """
     try:
-        if use_open3d:
-            pcd = o3d.io.read_point_cloud(file_path)
-            points = np.asarray(pcd.points)
-            has_colors = pcd.has_colors()
-            if has_colors:
-                colors = np.asarray(pcd.colors)
-        else:
-            points, colors = load_ply_file_plyfile(file_path)
-            has_colors = colors is not None
+        pcd = o3d.io.read_point_cloud(file_path)
+        points = np.asarray(pcd.points)
+        has_colors = pcd.has_colors()
+        if has_colors:
+            colors = np.asarray(pcd.colors)
 
         info = {
             'file_path': file_path,
@@ -375,7 +286,7 @@ def get_point_cloud_info(file_path: str, use_open3d: bool = True) -> Dict[str, U
             'centroid': [float(points[:, 0].mean()), float(points[:, 1].mean()), float(points[:, 2].mean())]
         }
 
-        if has_colors and use_open3d:
+        if has_colors:
             # Colors in Open3D are [0,1], convert to [0,255] for reporting
             colors_uint8 = (colors * 255).astype(np.uint8)
             info.update({
@@ -383,60 +294,9 @@ def get_point_cloud_info(file_path: str, use_open3d: bool = True) -> Dict[str, U
                 'g_range': [int(colors_uint8[:, 1].min()), int(colors_uint8[:, 1].max())],
                 'b_range': [int(colors_uint8[:, 2].min()), int(colors_uint8[:, 2].max())]
             })
-        elif has_colors:
-            info.update({
-                'r_range': [int(colors[:, 0].min()), int(colors[:, 0].max())],
-                'g_range': [int(colors[:, 1].min()), int(colors[:, 1].max())],
-                'b_range': [int(colors[:, 2].min()), int(colors[:, 2].max())]
-            })
 
         return info
 
     except Exception as e:
         raise RuntimeError(
             f"Failed to get point cloud info for {file_path}: {str(e)}")
-
-
-# =============================================================================
-# BACKEND SELECTION FUNCTIONS
-# =============================================================================
-
-def load_ply_with_backend(file_path: str, backend: str = "plyfile") -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Load PLY file using specified backend.
-
-    Args:
-        file_path: Path to PLY file
-        backend: Backend to use ("plyfile" or "open3d")
-
-    Returns:
-        Tuple of (points, colors) where:
-        - points: numpy array of shape (N, 3) with [x, y, z] coordinates
-        - colors: numpy array of shape (N, 3) with [r, g, b] colors (0-255)
-    """
-    if backend.lower() == "open3d":
-        return load_ply_file_open3d(file_path)
-    elif backend.lower() == "plyfile":
-        return load_ply_file_plyfile(file_path)
-    else:
-        raise ValueError(
-            f"Unknown backend: {backend}. Choose 'plyfile' or 'open3d'")
-
-
-def save_ply_with_backend(file_path: str, points: np.ndarray, colors: np.ndarray, backend: str = "plyfile") -> None:
-    """
-    Save PLY file using specified backend.
-
-    Args:
-        file_path: Output PLY file path
-        points: numpy array of shape (N, 3) with [x, y, z] coordinates
-        colors: numpy array of shape (N, 3) with [r, g, b] colors (0-255)
-        backend: Backend to use ("plyfile" or "open3d")
-    """
-    if backend.lower() == "open3d":
-        save_ply_file_open3d(file_path, points, colors)
-    elif backend.lower() == "plyfile":
-        save_ply_file_plyfile(file_path, points, colors)
-    else:
-        raise ValueError(
-            f"Unknown backend: {backend}. Choose 'plyfile' or 'open3d'")
