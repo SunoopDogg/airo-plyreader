@@ -3,15 +3,17 @@
 Red Pillar Detection from PLY Point Cloud Files
 
 This script detects red cylindrical pillars in PLY point cloud files using:
-1. HSV color space segmentation for red color detection
-2. DBSCAN clustering for grouping red points
-3. RANSAC cylinder fitting using pyransac3d
-4. Geometric constraints validation for pillar characteristics
-5. Visualization output with color-coded results
+1. Point cloud downsampling for performance optimization
+2. HSV color space segmentation for red color detection
+3. DBSCAN clustering for grouping red points
+4. RANSAC cylinder fitting using pyransac3d
+5. Geometric constraints validation for pillar characteristics
+6. Visualization output with color-coded results
 
 The pipeline is modularized into separate components for maintainability:
 - config: Global configuration parameters
 - ply_io: PLY file input/output operations
+- downsampling: Point cloud downsampling for performance
 - color_segmentation: HSV color filtering
 - clustering: DBSCAN clustering
 - cylinder_fitting: RANSAC cylinder fitting and pillar detection
@@ -25,7 +27,8 @@ from typing import List, Dict, Any
 
 # Import modularized components
 from config import INPUT_PLY_PATH, OUTPUT_PLY_PATH
-from ply_io import load_ply_file, save_ply_file
+from ply_io import load_ply_file_open3d, save_ply_file_open3d
+from downsampling import downsample_points
 from color_segmentation import filter_red_points_hsv
 from clustering import cluster_red_points
 from cylinder_fitting import detect_pillars_in_clusters
@@ -88,38 +91,41 @@ def main() -> None:
 
     try:
         # Step 1: Load PLY file
-        points, colors = load_ply_file(INPUT_PLY_PATH)
+        points, colors = load_ply_file_open3d(INPUT_PLY_PATH)
 
-        # Step 2: Filter red points
+        # Step 2: Downsample point cloud
+        points, colors = downsample_points(points, colors)
+
+        # Step 3: Filter red points
         red_points, red_colors = filter_red_points_hsv(points, colors)
 
         if len(red_points) == 0:
             print("No red points found. Exiting.")
             return
 
-        # Step 3: Cluster red points
+        # Step 4: Cluster red points
         clusters, cluster_ids = cluster_red_points(red_points)
 
         if len(clusters) == 0:
             print("No valid clusters found. Exiting.")
             return
 
-        # Step 4: Detect pillars
+        # Step 5: Detect pillars
         detected_pillars = detect_pillars_in_clusters(clusters, cluster_ids)
 
         if len(detected_pillars) == 0:
             print("No pillars detected after fitting. Exiting.")
             return
 
-        # Step 5: Create visualization
+        # Step 6: Create visualization
         output_points, output_colors = create_visualization_output(
             points, colors, detected_pillars
         )
 
-        # Step 6: Save output
-        save_ply_file(OUTPUT_PLY_PATH, output_points, output_colors)
+        # Step 7: Save output
+        save_ply_file_open3d(OUTPUT_PLY_PATH, output_points, output_colors)
 
-        # Step 7: Print summary
+        # Step 8: Print summary
         print_detection_summary(detected_pillars)
 
         total_time = time.time() - overall_start_time

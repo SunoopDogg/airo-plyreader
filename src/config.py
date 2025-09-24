@@ -15,6 +15,11 @@ parameters.
 INPUT_PLY_PATH = "ply/Object_Cloud.ply"
 OUTPUT_PLY_PATH = "output/output_pillars.ply"
 
+# PLY I/O Backend Selection
+# 'plyfile': Uses plyfile library (backward compatible, default)
+# 'open3d': Uses Open3D library (optimized for large point clouds, better memory management)
+PLY_IO_BACKEND = "plyfile"  # Options: "plyfile", "open3d"
+
 # =============================================================================
 # HSV COLOR SEGMENTATION PARAMETERS
 # =============================================================================
@@ -67,6 +72,18 @@ GRAY_COLOR = (128, 128, 128)             # Gray color for original points
 RED_COLOR = (255, 0, 0)                  # Red color for detected pillars
 # Points per unit length for cylinder sampling
 CYLINDER_SAMPLE_DENSITY = 50
+
+# =============================================================================
+# DOWNSAMPLING PARAMETERS
+# =============================================================================
+
+# Downsampling Parameters (Open3D Native Implementation)
+DOWNSAMPLING_ENABLED = True                    # Enable/disable downsampling step
+DOWNSAMPLING_METHOD = 'voxel'                  # 'voxel', 'random', 'uniform', 'farthest_point'
+DOWNSAMPLING_VOXEL_SIZE = 0.01                 # Voxel size for voxel grid method (meters)
+DOWNSAMPLING_TARGET_RATIO = 0.1                # Target ratio for random sampling (0.1 = 10%)
+DOWNSAMPLING_UNIFORM_K = 10                    # Keep every k-th point for uniform method
+DOWNSAMPLING_FARTHEST_POINTS = 100000          # Number of points to keep for farthest point method
 
 # =============================================================================
 # PROCESSING PARAMETERS
