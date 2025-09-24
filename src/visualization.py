@@ -118,3 +118,82 @@ def create_visualization_output(points: np.ndarray, colors: np.ndarray,
         f"Created visualization with {len(output_points):,} points in {viz_time:.2f} seconds")
 
     return output_points, output_colors
+
+
+def create_clustering_visualization(
+    original_points: np.ndarray,
+    original_colors: np.ndarray,
+    clusters: List[np.ndarray],
+    cluster_ids: List[int],
+    cluster_indices: List[np.ndarray] = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Create a visualization of clustering results with color-coded clusters.
+
+    Args:
+        original_points: Original point cloud array of shape (N, 3)
+        original_colors: Original color array of shape (N, 3) with values 0-255
+        clusters: List of cluster point arrays
+        cluster_ids: List of cluster IDs
+        cluster_indices: List of arrays containing original indices for each cluster (optional)
+
+    Returns:
+        Tuple of (visualization_points, visualization_colors) for saving
+    """
+    print("Creating clustering visualization...")
+
+    # Start with gray background for all original points
+    viz_points = original_points.copy()
+    viz_colors = np.full_like(original_colors, 128,
+                              dtype=np.uint8)  # Gray background
+
+    # Generate distinctive colors for each cluster
+    cluster_colors = [
+        [255, 0, 0],    # Red
+        [0, 255, 0],    # Green
+        [0, 0, 255],    # Blue
+        [255, 255, 0],  # Yellow
+        [255, 0, 255],  # Magenta
+        [0, 255, 255],  # Cyan
+        [255, 128, 0],  # Orange
+        [128, 0, 255],  # Purple
+        [255, 128, 128],  # Light Red
+        [128, 255, 128],  # Light Green
+    ]
+
+    # Efficiently color cluster points using indices
+    total_cluster_points = 0
+
+    for i, (cluster_points, cluster_id) in enumerate(zip(clusters, cluster_ids)):
+        if len(cluster_points) == 0:
+            continue
+
+        # Use cycling colors if we have more clusters than predefined colors
+        color_idx = i % len(cluster_colors)
+        cluster_color = np.array(cluster_colors[color_idx], dtype=np.uint8)
+
+        # Use direct indexing if cluster_indices is provided (FAST path)
+        if cluster_indices is not None and i < len(cluster_indices):
+            # Direct index-based coloring - O(M) instead of O(N×M)
+            indices = cluster_indices[i]
+            viz_colors[indices] = cluster_color
+        else:
+            # Fallback to distance-based matching (SLOW path - backward compatibility)
+            print(
+                f"  Warning: Using slow distance-based matching for cluster {cluster_id}")
+            tolerance = 1e-6
+            for cluster_point in cluster_points:
+                # Find closest point in original cloud
+                distances = np.linalg.norm(
+                    original_points - cluster_point, axis=1)
+                closest_idx = np.argmin(distances)
+                # If the distance is very small, it's a match
+                if distances[closest_idx] < tolerance:
+                    viz_colors[closest_idx] = cluster_color
+
+        total_cluster_points += len(cluster_points)
+
+    print(
+        f"  Colored {total_cluster_points:,} cluster points across {len(clusters)} clusters")
+
+    return viz_points, viz_colors
