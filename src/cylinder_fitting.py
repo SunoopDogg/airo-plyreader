@@ -11,7 +11,7 @@ from typing import List, Optional, Dict, Any
 import pyransac3d as pyrsc
 from config import (
     PILLAR_RADIUS_MIN, PILLAR_RADIUS_MAX, PILLAR_HEIGHT_MIN,
-    PILLAR_AXIS_Z_ANGLE_MAX, RANSAC_THRESHOLD, RANSAC_MAX_ITERATIONS,
+    RANSAC_THRESHOLD, RANSAC_MAX_ITERATIONS,
     MAX_POINTS_PER_CLUSTER
 )
 
@@ -32,6 +32,7 @@ def validate_cylinder_geometry(center: np.ndarray, axis: np.ndarray, radius: flo
     """
     # Check radius constraints
     if radius < PILLAR_RADIUS_MIN or radius > PILLAR_RADIUS_MAX:
+        print(f"    Cylinder rejected (radius={radius:.3f}m)")
         return False
 
     # Check height constraint (approximate from point spread along axis)
@@ -41,15 +42,7 @@ def validate_cylinder_geometry(center: np.ndarray, axis: np.ndarray, radius: flo
     height = np.max(projections) - np.min(projections)
 
     if height < PILLAR_HEIGHT_MIN:
-        return False
-
-    # Check axis alignment with Z-axis (vertical orientation)
-    z_axis = np.array([0, 0, 1])
-    axis_normalized = axis / np.linalg.norm(axis)
-    angle_with_z = np.arccos(np.abs(np.dot(axis_normalized, z_axis)))
-    angle_degrees = np.degrees(angle_with_z)
-
-    if angle_degrees > PILLAR_AXIS_Z_ANGLE_MAX:
+        print(f"    Cylinder rejected (height={height:.3f}m)")
         return False
 
     return True

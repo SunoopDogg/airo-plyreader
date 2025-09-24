@@ -42,16 +42,20 @@ def rgb_to_hsv_vectorized(rgb_colors: np.ndarray) -> np.ndarray:
     return hsv_colors
 
 
-def filter_red_points_hsv(points: np.ndarray, colors: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def filter_red_points_hsv(points: np.ndarray, colors: np.ndarray, return_hsv: bool = False):
     """
     Filter points based on HSV red color criteria.
 
     Args:
         points: numpy array of shape (N, 3) with [x, y, z] coordinates
         colors: numpy array of shape (N, 3) with [r, g, b] colors (0-255)
+        return_hsv: Whether to return HSV colors of all points
 
     Returns:
-        Tuple of (red_points, red_colors) containing only red-colored points
+        If return_hsv=False (default):
+            Tuple of (red_points, red_colors, red_indices)
+        If return_hsv=True:
+            Tuple of (red_points, red_colors, red_indices, hsv_colors)
     """
     print("Filtering red points using HSV color space...")
     start_time = time.time()
@@ -80,9 +84,10 @@ def filter_red_points_hsv(points: np.ndarray, colors: np.ndarray) -> Tuple[np.nd
     # Apply saturation and value constraints
     red_mask &= (s >= s_min) & (v >= v_min)
 
-    # Filter points and colors
+    # Filter points, colors, and get indices
     red_points = points[red_mask]
     red_colors = colors[red_mask]
+    red_indices = np.where(red_mask)[0]  # Get original indices of red points
 
     filter_time = time.time() - start_time
     print(f"Found {len(red_points):,} red points ({len(red_points)/len(points)*100:.2f}%) "
@@ -95,4 +100,8 @@ def filter_red_points_hsv(points: np.ndarray, colors: np.ndarray) -> Tuple[np.nd
               f"S[{red_hsv[:, 1].min():.3f}-{red_hsv[:, 1].max():.3f}], "
               f"V[{red_hsv[:, 2].min():.1f}-{red_hsv[:, 2].max():.1f}]")
 
-    return red_points, red_colors
+    # Return different tuples based on return_hsv flag for backwards compatibility
+    if return_hsv:
+        return red_points, red_colors, red_indices, hsv_colors
+    else:
+        return red_points, red_colors, red_indices
