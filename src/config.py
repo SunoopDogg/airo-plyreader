@@ -58,15 +58,6 @@ PILLAR_RADIUS_MAX = 100.0
 PILLAR_HEIGHT_MIN = 0.1
 
 # =============================================================================
-# RANSAC PARAMETERS
-# =============================================================================
-
-# RANSAC Parameters (RELAXED for better cylinder fitting)
-# Relaxed distance threshold for inlier classification
-RANSAC_THRESHOLD = 0.2
-RANSAC_MAX_ITERATIONS = 10000             # Increased maximum RANSAC iterations
-
-# =============================================================================
 # VISUALIZATION PARAMETERS
 # =============================================================================
 
@@ -95,10 +86,23 @@ DOWNSAMPLING_UNIFORM_K = 10
 DOWNSAMPLING_FARTHEST_POINTS = 100000
 
 # =============================================================================
+# PCA ANALYSIS PARAMETERS
+# =============================================================================
+
+# PCA Analysis Parameters (for alternative pipeline)
+# Minimum eigenvalue ratio for primary axis to be considered cylindrical
+PCA_CYLINDER_THRESHOLD = 0.6
+# Maximum difference between 2nd and 3rd eigenvalue ratios for cylindrical detection
+PCA_CROSS_SECTION_RATIO_THRESHOLD = 0.3
+# Minimum variance required for secondary axes (to avoid degenerate cases)
+PCA_MIN_SECONDARY_VARIANCE = 0.05
+# Maximum allowed variance for tertiary axis in cylindrical structures
+PCA_MAX_TERTIARY_VARIANCE = 0.4
+
+# =============================================================================
 # PROCESSING PARAMETERS
 # =============================================================================
 
 # Processing Parameters
 # Limit for cylinder fitting to prevent memory issues
 MAX_POINTS_PER_CLUSTER = 50000
-PROGRESS_REPORT_INTERVAL = 100000        # Report progress every N points

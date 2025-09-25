@@ -6,7 +6,7 @@ This script detects red cylindrical pillars in PLY point cloud files using:
 1. Point cloud downsampling for performance optimization
 2. HSV color space segmentation for red color detection
 3. DBSCAN clustering for grouping red points
-4. RANSAC cylinder fitting using pyransac3d
+4. PCA (Principal Component Analysis) for cylindrical structure detection
 5. Geometric constraints validation for pillar characteristics
 6. Visualization output with color-coded results
 
@@ -16,7 +16,7 @@ The pipeline is modularized into separate components for maintainability:
 - downsampling: Point cloud downsampling for performance
 - color_segmentation: HSV color filtering
 - clustering: DBSCAN clustering
-- cylinder_fitting: RANSAC cylinder fitting and pillar detection
+- pca_analysis: PCA-based cylindrical structure detection and pillar identification
 - visualization: Output visualization generation
 """
 
@@ -33,7 +33,7 @@ from ply_io import load_ply_file_open3d, save_ply_file_open3d
 from downsampling import downsample_points
 from color_segmentation import filter_red_points_hsv
 from clustering import cluster_red_points
-from cylinder_fitting import detect_pillars_in_clusters
+from pca_analysis import detect_pillars_with_pca
 from visualization import create_visualization_output, create_clustering_visualization
 
 
@@ -164,11 +164,11 @@ def main() -> None:
                 print(
                     f"Warning: Failed to save clustering visualization: {str(e)}")
 
-        # Step 5: Detect pillars
-        detected_pillars = detect_pillars_in_clusters(clusters, cluster_ids)
+        # Step 5: Detect pillars using PCA
+        detected_pillars = detect_pillars_with_pca(clusters, cluster_ids)
 
         if len(detected_pillars) == 0:
-            print("No pillars detected after fitting. Exiting.")
+            print("No pillars detected after PCA analysis. Exiting.")
             return
 
         # Step 6: Create visualization

@@ -11,7 +11,6 @@ Modules:
     ply_io: PLY file input/output operations
     color_segmentation: HSV color filtering functions
     clustering: DBSCAN clustering functionality
-    cylinder_fitting: RANSAC cylinder fitting and pillar detection
     visualization: Visualization and output generation
     main: Main pipeline execution
 """
@@ -28,5 +27,4 @@ from .ply_io import (
 )
 from .color_segmentation import filter_red_points_hsv
 from .clustering import cluster_red_points
-from .cylinder_fitting import detect_pillars_in_clusters
 from .visualization import create_visualization_output
