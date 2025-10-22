@@ -1,5 +1,5 @@
 """
-PCA-based cluster analysis and pillar detection for the red pillar detection pipeline.
+PCA-based cluster analysis and pillar detection for the multi-color pillar detection pipeline.
 
 This module handles Principal Component Analysis (PCA) based cylindrical structure detection
 in point clusters, geometric validation of PCA-derived parameters, and pillar detection
@@ -14,12 +14,12 @@ from config import (
     PILLAR_RADIUS_MIN, PILLAR_RADIUS_MAX, PILLAR_HEIGHT_MIN,
     MAX_POINTS_PER_CLUSTER, PCA_CYLINDER_THRESHOLD,
     PCA_CROSS_SECTION_RATIO_THRESHOLD, PCA_MIN_SECONDARY_VARIANCE,
-    PCA_MAX_TERTIARY_VARIANCE
+    PCA_MAX_TERTIARY_VARIANCE, TOP_CLUSTERS_TO_ANALYZE
 )
 
 
 def validate_pca_geometry(center: np.ndarray, axis: np.ndarray, radius: float,
-                         cluster_points: np.ndarray) -> bool:
+                          cluster_points: np.ndarray) -> bool:
     """
     Validate PCA-derived cylinder geometry against pillar constraints.
 
@@ -104,11 +104,13 @@ def analyze_cluster_with_pca(cluster_points: np.ndarray, cluster_id: int) -> Opt
             λ1 > PCA_CYLINDER_THRESHOLD and  # Strong primary direction
             λ2 > PCA_MIN_SECONDARY_VARIANCE and  # Some cross-sectional spread
             λ3 < PCA_MAX_TERTIARY_VARIANCE and   # Third component not too large
-            abs(λ2 - λ3) < PCA_CROSS_SECTION_RATIO_THRESHOLD  # Similar cross-sectional variance
+            # Similar cross-sectional variance
+            abs(λ2 - λ3) < PCA_CROSS_SECTION_RATIO_THRESHOLD
         )
 
         if not is_cylindrical:
-            print(f"    Cluster rejected (not cylindrical): λ1={λ1:.3f}, λ2={λ2:.3f}, λ3={λ3:.3f}")
+            print(
+                f"    PCA rejected (not cylindrical): λ1={λ1:.3f}, λ2={λ2:.3f}, λ3={λ3:.3f}")
             return None
 
         # Extract cylinder properties
@@ -116,7 +118,8 @@ def analyze_cluster_with_pca(cluster_points: np.ndarray, cluster_id: int) -> Opt
 
         # Estimate radius from cross-sectional variance
         # Use average of second and third eigenvalues as radius estimate
-        cross_sectional_variance = (explained_variance[1] + explained_variance[2]) / 2
+        cross_sectional_variance = (
+            explained_variance[1] + explained_variance[2]) / 2
         estimated_radius = np.sqrt(cross_sectional_variance)
 
         # Validate geometry
@@ -125,7 +128,8 @@ def analyze_cluster_with_pca(cluster_points: np.ndarray, cluster_id: int) -> Opt
 
         # Calculate confidence based on eigenvalue ratios and cylindrical structure quality
         # Higher λ1 and more balanced λ2, λ3 indicate better cylindrical structure
-        cylindrical_quality = λ1 * (1 - abs(λ2 - λ3))  # Penalize imbalanced cross-sections
+        # Penalize imbalanced cross-sections
+        cylindrical_quality = λ1 * (1 - abs(λ2 - λ3))
         confidence = min(cylindrical_quality, 1.0)  # Cap at 1.0
 
         print(f"    PCA cylinder detected: radius={estimated_radius:.3f}m, confidence={confidence:.3f}, "
@@ -151,6 +155,8 @@ def analyze_cluster_with_pca(cluster_points: np.ndarray, cluster_id: int) -> Opt
 def detect_pillars_with_pca(clusters: List[np.ndarray], cluster_ids: List[int]) -> List[Dict[str, Any]]:
     """
     Detect pillars by analyzing clusters with PCA.
+    Only the top N clusters (by point count) are analyzed to focus on clusters
+    with the most data points, skipping the pillar candidate selection process.
 
     Args:
         clusters: List of point clusters
@@ -162,9 +168,29 @@ def detect_pillars_with_pca(clusters: List[np.ndarray], cluster_ids: List[int]) 
     print("Detecting pillars using PCA analysis...")
     start_time = time.time()
 
+    # Sort clusters by point count in descending order (largest clusters first)
+    cluster_data = list(zip(clusters, cluster_ids))
+    cluster_data.sort(key=lambda x: len(x[0]), reverse=True)
+
+    # Limit to top N clusters if specified
+    if TOP_CLUSTERS_TO_ANALYZE > 0:
+        clusters_to_analyze = cluster_data[:TOP_CLUSTERS_TO_ANALYZE]
+        print(
+            f"Analyzing top {TOP_CLUSTERS_TO_ANALYZE} clusters by point count:")
+        if len(cluster_data) > TOP_CLUSTERS_TO_ANALYZE:
+            skipped_clusters = len(cluster_data) - TOP_CLUSTERS_TO_ANALYZE
+            print(f"Skipping {skipped_clusters} smaller clusters")
+    else:
+        clusters_to_analyze = cluster_data
+        print(
+            f"Analyzing all {len(cluster_data)} clusters in order of point count:")
+
+    for i, (cluster, cluster_id) in enumerate(clusters_to_analyze):
+        print(f"  {i+1}. Cluster {cluster_id}: {len(cluster):,} points")
+
     detected_pillars = []
 
-    for cluster, cluster_id in zip(clusters, cluster_ids):
+    for cluster, cluster_id in clusters_to_analyze:
         pillar = analyze_cluster_with_pca(cluster, cluster_id)
         if pillar is not None:
             detected_pillars.append(pillar)
@@ -177,48 +203,26 @@ def detect_pillars_with_pca(clusters: List[np.ndarray], cluster_ids: List[int]) 
     if len(detected_pillars) > 0:
         confidences = [p['confidence'] for p in detected_pillars]
         radii = [p['radius'] for p in detected_pillars]
-        eigenvalue_ratios = [p['eigenvalue_ratios'][0] for p in detected_pillars]
+        methods = [p['analysis_method'] for p in detected_pillars]
+
+        # Only show eigenvalue ratios for PCA-based results
+        pca_pillars = [p for p in detected_pillars if 'eigenvalue_ratios' in p]
+
         print(
             f"  Confidence range: {min(confidences):.3f} - {max(confidences):.3f}")
         print(f"  Radius range: {min(radii):.3f}m - {max(radii):.3f}m")
-        print(f"  Primary eigenvalue range: {min(eigenvalue_ratios):.3f} - {max(eigenvalue_ratios):.3f}")
+        print(f"  Analysis methods: {', '.join(set(methods))}")
+
+        if pca_pillars:
+            eigenvalue_ratios = [p['eigenvalue_ratios'][0]
+                                 for p in pca_pillars]
+            print(
+                f"  PCA primary eigenvalue range: {min(eigenvalue_ratios):.3f} - {max(eigenvalue_ratios):.3f}")
+
     else:
-        print("  No pillars met the PCA cylindrical criteria")
+        print("  No pillars were detected by any method")
 
     # Sort pillars by confidence
     detected_pillars.sort(key=lambda p: p['confidence'], reverse=True)
 
     return detected_pillars
-
-
-def get_pca_cluster_statistics(cluster_points: np.ndarray) -> Dict[str, float]:
-    """
-    Get detailed PCA statistics for a cluster (utility function for debugging).
-
-    Args:
-        cluster_points: numpy array of shape (N, 3) with cluster point coordinates
-
-    Returns:
-        Dictionary with PCA statistics
-    """
-    if len(cluster_points) < 3:
-        return {}
-
-    # Center the data
-    centered_points = cluster_points - np.mean(cluster_points, axis=0)
-
-    # Apply PCA
-    pca = PCA(n_components=3)
-    pca.fit(centered_points)
-
-    λ1, λ2, λ3 = pca.explained_variance_ratio_
-
-    return {
-        'eigenvalue_ratio_1': λ1,
-        'eigenvalue_ratio_2': λ2,
-        'eigenvalue_ratio_3': λ3,
-        'cylindrical_score': λ1 * (1 - abs(λ2 - λ3)),
-        'linearity_score': λ1,
-        'planarity_score': λ1 + λ2,
-        'sphericity_score': 1 - λ1
-    }
