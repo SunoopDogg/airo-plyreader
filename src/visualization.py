@@ -1,5 +1,5 @@
 """
-Visualization functions for the red pillar detection pipeline.
+Visualization functions for the multi-color pillar detection pipeline.
 
 This module handles the creation of visualization output including cylinder
 sample point generation, color-coded point cloud creation, and output
@@ -9,23 +9,22 @@ visualization preparation.
 import numpy as np
 import time
 from typing import List, Tuple, Dict, Any
-from config import GRAY_COLOR, RED_COLOR, CYLINDER_SAMPLE_DENSITY
+from config import GRAY_COLOR, RED_COLOR
 
 
-def generate_pca_axes_points(pillar: Dict[str, Any], axis_length_factor: float = 2.0) -> Tuple[np.ndarray, np.ndarray]:
+def generate_pca_axes_points(pillar: Dict[str, Any], axis_length_factor: float = 3.0) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Generate 3D coordinate axes based on PCA components for a detected pillar.
+    Generate cylinder axis line for a detected pillar (main axis only).
 
     Args:
-        pillar: Detected pillar dictionary containing PCA analysis results
-        axis_length_factor: Factor to scale axis length relative to pillar radius
+        pillar: Detected pillar dictionary containing analysis results
+        axis_length_factor: Factor to scale axis length relative to pillar height
 
     Returns:
-        Tuple of (axis_points, axis_colors) for PCA-based coordinate system
+        Tuple of (axis_points, axis_colors) for cylinder main axis only
     """
     center = pillar['center']
-    axis = pillar['axis']  # Primary PCA component (cylinder axis)
-    radius = pillar['radius']
+    axis = pillar['axis']  # Cylinder axis
 
     # Calculate axis length based on pillar dimensions
     if len(pillar['inlier_points']) > 0:
@@ -33,102 +32,27 @@ def generate_pca_axes_points(pillar: Dict[str, Any], axis_length_factor: float =
         axis_norm = axis / np.linalg.norm(axis)
         projections = np.dot(pillar['inlier_points'] - center, axis_norm)
         height = np.max(projections) - np.min(projections)
-        axis_length = max(height * 0.5, radius * axis_length_factor)
+        axis_length = height * axis_length_factor
     else:
-        axis_length = radius * axis_length_factor
+        axis_length = pillar['radius'] * 10  # Fallback
 
-    # Get all PCA components if available (from eigenanalysis in pca_analysis.py)
-    # For robust axis generation, we'll create orthogonal axes based on the primary axis
+    # Generate only the main axis (cylinder direction)
     primary_axis = axis / np.linalg.norm(axis)
+    primary_start = center - axis_length * 0.5 * primary_axis
+    primary_end = center + axis_length * 0.5 * primary_axis
 
-    # Create two orthogonal vectors for cross-sectional axes
-    # Find a vector orthogonal to primary axis
-    if abs(primary_axis[2]) < 0.9:
-        secondary_axis = np.cross(primary_axis, [0, 0, 1])
-    else:
-        secondary_axis = np.cross(primary_axis, [1, 0, 0])
-    secondary_axis = secondary_axis / np.linalg.norm(secondary_axis)
+    # Create axis line with more points for visibility
+    axis_points = np.linspace(primary_start, primary_end, 30)
+    axis_colors = np.full((len(axis_points), 3), [
+                          255, 255, 0], dtype=np.uint8)  # Yellow for visibility
 
-    # Third axis is cross product of first two
-    tertiary_axis = np.cross(primary_axis, secondary_axis)
-    tertiary_axis = tertiary_axis / np.linalg.norm(tertiary_axis)
-
-    # Generate axis line points
-    axis_points = []
-    axis_colors = []
-
-    # Primary axis (Red) - cylinder main direction
-    primary_start = center - axis_length * primary_axis
-    primary_end = center + axis_length * primary_axis
-    primary_points = np.linspace(primary_start, primary_end, 20)
-    axis_points.extend(primary_points)
-    axis_colors.extend([[255, 0, 0]] * len(primary_points))  # Red
-
-    # Secondary axis (Green) - first cross-sectional direction
-    secondary_start = center - axis_length * 0.7 * secondary_axis
-    secondary_end = center + axis_length * 0.7 * secondary_axis
-    secondary_points = np.linspace(secondary_start, secondary_end, 15)
-    axis_points.extend(secondary_points)
-    axis_colors.extend([[0, 255, 0]] * len(secondary_points))  # Green
-
-    # Tertiary axis (Blue) - second cross-sectional direction
-    tertiary_start = center - axis_length * 0.7 * tertiary_axis
-    tertiary_end = center + axis_length * 0.7 * tertiary_axis
-    tertiary_points = np.linspace(tertiary_start, tertiary_end, 15)
-    axis_points.extend(tertiary_points)
-    axis_colors.extend([[0, 0, 255]] * len(tertiary_points))  # Blue
-
-    return np.array(axis_points), np.array(axis_colors, dtype=np.uint8)
-
-
-def generate_cylinder_sample_points(center: np.ndarray, axis: np.ndarray, radius: float,
-                                    height: float, num_points: int = 100) -> np.ndarray:
-    """
-    Generate sample points for cylinder visualization.
-
-    Args:
-        center: Cylinder center point
-        axis: Cylinder axis vector
-        radius: Cylinder radius
-        height: Cylinder height
-        num_points: Number of sample points to generate
-
-    Returns:
-        numpy array of sample points for visualization
-    """
-    # Normalize axis
-    axis_norm = axis / np.linalg.norm(axis)
-
-    # Create orthogonal vectors for cylinder circumference
-    # Find a vector orthogonal to axis
-    if abs(axis_norm[2]) < 0.9:
-        ortho1 = np.cross(axis_norm, [0, 0, 1])
-    else:
-        ortho1 = np.cross(axis_norm, [1, 0, 0])
-    ortho1 = ortho1 / np.linalg.norm(ortho1)
-    ortho2 = np.cross(axis_norm, ortho1)
-
-    sample_points = []
-
-    # Generate circular cross-sections at different heights
-    num_circles = max(5, int(height * CYLINDER_SAMPLE_DENSITY))
-    num_points_per_circle = max(8, num_points // num_circles)
-
-    for h in np.linspace(-height/2, height/2, num_circles):
-        circle_center = center + h * axis_norm
-
-        for theta in np.linspace(0, 2*np.pi, num_points_per_circle, endpoint=False):
-            point = (circle_center +
-                     radius * (np.cos(theta) * ortho1 + np.sin(theta) * ortho2))
-            sample_points.append(point)
-
-    return np.array(sample_points)
+    return axis_points, axis_colors
 
 
 def create_visualization_output(points: np.ndarray, colors: np.ndarray,
                                 detected_pillars: List[Dict[str, Any]]) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Create visualization with color-coded results including PCA-based coordinate axes.
+    Create visualization with color-coded results including cylinder axes.
 
     Args:
         points: Original point cloud coordinates
@@ -138,7 +62,7 @@ def create_visualization_output(points: np.ndarray, colors: np.ndarray,
     Returns:
         Tuple of (output_points, output_colors) for visualization
     """
-    print("Creating visualization output with PCA axes...")
+    print("Creating visualization output with cylinder axes...")
     start_time = time.time()
 
     # Start with all points in gray
@@ -150,14 +74,25 @@ def create_visualization_output(points: np.ndarray, colors: np.ndarray,
     all_axes_points = []
     all_axes_colors = []
 
+    # Find the pillar with the most points
+    largest_pillar = None
+    max_points = 0
+    for pillar in detected_pillars:
+        if len(pillar['inlier_points']) > max_points:
+            max_points = len(pillar['inlier_points'])
+            largest_pillar = pillar
+
     for pillar in detected_pillars:
         if len(pillar['inlier_points']) > 0:
             all_pillar_points.append(pillar['inlier_points'])
 
-            # Generate PCA-based coordinate axes for each pillar
-            axes_points, axes_colors = generate_pca_axes_points(pillar)
-            all_axes_points.append(axes_points)
-            all_axes_colors.append(axes_colors)
+            # Generate axis only for the largest pillar
+            if pillar is largest_pillar:
+                axes_points, axes_colors = generate_pca_axes_points(pillar)
+                all_axes_points.append(axes_points)
+                all_axes_colors.append(axes_colors)
+                print(
+                    f"Generating axis for largest cluster: {len(pillar['inlier_points']):,} points")
 
     if all_pillar_points:
         # Combine all pillar points
@@ -177,27 +112,10 @@ def create_visualization_output(points: np.ndarray, colors: np.ndarray,
             output_points = np.vstack([output_points, combined_axes_points])
             output_colors = np.vstack([output_colors, combined_axes_colors])
 
-            print(f"Added PCA axes for {len(detected_pillars)} pillars ({len(combined_axes_points):,} axis points)")
+            print(
+                f"Added cylinder axes for {len(detected_pillars)} pillars ({len(combined_axes_points):,} axis points)")
 
-        # Optional: Add cylinder sample geometry for reference
-        for i, pillar in enumerate(detected_pillars):
-            if len(pillar['inlier_points']) > 0:
-                # Estimate height from inlier points
-                axis_norm = pillar['axis'] / np.linalg.norm(pillar['axis'])
-                projections = np.dot(
-                    pillar['inlier_points'] - pillar['center'], axis_norm)
-                height = np.max(projections) - np.min(projections)
-
-                # Generate cylinder sample points
-                cylinder_samples = generate_cylinder_sample_points(
-                    pillar['center'], pillar['axis'], pillar['radius'], height, 100
-                )
-
-                # Add cylinder samples to output (lighter red to distinguish from axes)
-                output_points = np.vstack([output_points, cylinder_samples])
-                cylinder_colors = np.full(
-                    (len(cylinder_samples), 3), (180, 0, 0), dtype=np.uint8)  # Darker red
-                output_colors = np.vstack([output_colors, cylinder_colors])
+        # Note: Cylinder surface visualization removed - showing axes only
 
     viz_time = time.time() - start_time
     print(
