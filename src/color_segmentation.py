@@ -1,16 +1,20 @@
 """
-Color segmentation functions for the red pillar detection pipeline.
+Color segmentation functions for the multi-color pillar detection pipeline.
 
-This module handles HSV color space conversion and red color filtering
-operations, including vectorized RGB to HSV conversion and HSV-based
-red point filtering with configurable thresholds.
+This module handles HSV color space conversion and configurable color filtering
+operations, supporting red, blue, and green color detection modes with
+HSV-based filtering and configurable thresholds.
 """
 
 import numpy as np
 import cv2
 import time
-from typing import Tuple
-from config import HSV_RED_H_RANGES, HSV_RED_S_MIN, HSV_RED_V_MIN
+from config import (
+    COLOR_DETECTION_MODE,
+    HSV_RED_H_RANGES, HSV_RED_S_MIN, HSV_RED_V_MIN,
+    HSV_BLUE_H_RANGES, HSV_BLUE_S_MIN, HSV_BLUE_V_MIN,
+    HSV_GREEN_H_RANGES, HSV_GREEN_S_MIN, HSV_GREEN_V_MIN
+)
 
 
 def rgb_to_hsv_vectorized(rgb_colors: np.ndarray) -> np.ndarray:
@@ -42,9 +46,9 @@ def rgb_to_hsv_vectorized(rgb_colors: np.ndarray) -> np.ndarray:
     return hsv_colors
 
 
-def filter_red_points_hsv(points: np.ndarray, colors: np.ndarray, return_hsv: bool = False):
+def filter_colored_points_hsv(points: np.ndarray, colors: np.ndarray, return_hsv: bool = False):
     """
-    Filter points based on HSV red color criteria.
+    Filter points based on HSV color criteria for the configured color mode.
 
     Args:
         points: numpy array of shape (N, 3) with [x, y, z] coordinates
@@ -53,12 +57,30 @@ def filter_red_points_hsv(points: np.ndarray, colors: np.ndarray, return_hsv: bo
 
     Returns:
         If return_hsv=False (default):
-            Tuple of (red_points, red_colors, red_indices)
+            Tuple of (colored_points, colored_colors, colored_indices)
         If return_hsv=True:
-            Tuple of (red_points, red_colors, red_indices, hsv_colors)
+            Tuple of (colored_points, colored_colors, colored_indices, hsv_colors)
     """
-    print("Filtering red points using HSV color space...")
+    color_name = COLOR_DETECTION_MODE.lower()
+    print(f"Filtering {color_name} points using HSV color space...")
     start_time = time.time()
+
+    # Get color parameters based on mode
+    if color_name == 'red':
+        h_ranges = HSV_RED_H_RANGES
+        s_min = HSV_RED_S_MIN
+        v_min = HSV_RED_V_MIN
+    elif color_name == 'blue':
+        h_ranges = HSV_BLUE_H_RANGES
+        s_min = HSV_BLUE_S_MIN
+        v_min = HSV_BLUE_V_MIN
+    elif color_name == 'green':
+        h_ranges = HSV_GREEN_H_RANGES
+        s_min = HSV_GREEN_S_MIN
+        v_min = HSV_GREEN_V_MIN
+    else:
+        raise ValueError(
+            f"Unsupported color detection mode: {COLOR_DETECTION_MODE}")
 
     # Convert RGB to HSV
     hsv_colors = rgb_to_hsv_vectorized(colors)
@@ -69,39 +91,38 @@ def filter_red_points_hsv(points: np.ndarray, colors: np.ndarray, return_hsv: bo
     v = hsv_colors[:, 2]  # Value (0-255)
 
     # Convert thresholds to OpenCV scale
-    # Note: OpenCV HSV saturation is 0-1 (float), value is 0-255
-    s_min = HSV_RED_S_MIN  # Already in 0-1 range
-    v_min = HSV_RED_V_MIN * 255  # Convert to 0-255 range
+    s_min_scaled = s_min  # Already in 0-1 range
+    v_min_scaled = v_min * 255  # Convert to 0-255 range
 
-    # Create red color mask
-    red_mask = np.zeros(len(h), dtype=bool)
+    # Create color mask
+    color_mask = np.zeros(len(h), dtype=bool)
 
-    # Apply HSV red hue ranges
-    for h_min, h_max in HSV_RED_H_RANGES:
+    # Apply HSV hue ranges for the selected color
+    for h_min, h_max in h_ranges:
         hue_mask = (h >= h_min) & (h <= h_max)
-        red_mask |= hue_mask
+        color_mask |= hue_mask
 
     # Apply saturation and value constraints
-    red_mask &= (s >= s_min) & (v >= v_min)
+    color_mask &= (s >= s_min_scaled) & (v >= v_min_scaled)
 
     # Filter points, colors, and get indices
-    red_points = points[red_mask]
-    red_colors = colors[red_mask]
-    red_indices = np.where(red_mask)[0]  # Get original indices of red points
+    colored_points = points[color_mask]
+    colored_colors = colors[color_mask]
+    colored_indices = np.where(color_mask)[0]  # Get original indices
 
     filter_time = time.time() - start_time
-    print(f"Found {len(red_points):,} red points ({len(red_points)/len(points)*100:.2f}%) "
+    print(f"Found {len(colored_points):,} {color_name} points ({len(colored_points)/len(points)*100:.2f}%) "
           f"in {filter_time:.2f} seconds")
 
     # Debug: Show HSV statistics for filtered points
-    if len(red_points) > 0:
-        red_hsv = rgb_to_hsv_vectorized(red_colors)
-        print(f"  Red points HSV ranges: H[{red_hsv[:, 0].min():.1f}-{red_hsv[:, 0].max():.1f}], "
-              f"S[{red_hsv[:, 1].min():.3f}-{red_hsv[:, 1].max():.3f}], "
-              f"V[{red_hsv[:, 2].min():.1f}-{red_hsv[:, 2].max():.1f}]")
+    if len(colored_points) > 0:
+        filtered_hsv = rgb_to_hsv_vectorized(colored_colors)
+        print(f"  {color_name.title()} points HSV ranges: H[{filtered_hsv[:, 0].min():.1f}-{filtered_hsv[:, 0].max():.1f}], "
+              f"S[{filtered_hsv[:, 1].min():.3f}-{filtered_hsv[:, 1].max():.3f}], "
+              f"V[{filtered_hsv[:, 2].min():.1f}-{filtered_hsv[:, 2].max():.1f}]")
 
     # Return different tuples based on return_hsv flag for backwards compatibility
     if return_hsv:
-        return red_points, red_colors, red_indices, hsv_colors
+        return colored_points, colored_colors, colored_indices, hsv_colors
     else:
-        return red_points, red_colors, red_indices
+        return colored_points, colored_colors, colored_indices

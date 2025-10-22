@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Red Pillar Detection from PLY Point Cloud Files
+Multi-Color Pillar Detection from PLY Point Cloud Files
 
-This script detects red cylindrical pillars in PLY point cloud files using:
+This script detects cylindrical pillars of any color in PLY point cloud files using:
 1. Point cloud downsampling for performance optimization
-2. HSV color space segmentation for red color detection
-3. DBSCAN clustering for grouping red points
+2. HSV color space segmentation for configurable color detection
+3. DBSCAN clustering for grouping colored points
 4. PCA (Principal Component Analysis) for cylindrical structure detection
 5. Geometric constraints validation for pillar characteristics
 6. Visualization output with color-coded results
@@ -27,11 +27,11 @@ from typing import List, Dict, Any
 
 from config import (
     INPUT_PLY_PATH, OUTPUT_PLY_PATH, ENABLE_INTERMEDIATE_SAVES,
-    DOWNSAMPLED_PLY_PATH, CLUSTERED_PLY_PATH, RED_POINTS_ONLY_PLY_PATH
+    DOWNSAMPLED_PLY_PATH, CLUSTERED_PLY_PATH, COLOR_DETECTION_MODE, get_colored_points_path
 )
 from ply_io import load_ply_file_open3d, save_ply_file_open3d
 from downsampling import downsample_points
-from color_segmentation import filter_red_points_hsv
+from color_segmentation import filter_colored_points_hsv
 from clustering import cluster_red_points
 from pca_analysis import detect_pillars_with_pca
 from visualization import create_visualization_output, create_clustering_visualization
@@ -79,15 +79,17 @@ def print_detection_summary(detected_pillars: List[Dict[str, Any]]) -> None:
 
 def main() -> None:
     """Main pipeline execution."""
-    print("Red Pillar Detection Pipeline")
+    print(f"{COLOR_DETECTION_MODE.title()} Pillar Detection Pipeline")
     print("="*60)
+    print(f"Color detection mode: {COLOR_DETECTION_MODE.upper()}")
     print(f"Input file: {INPUT_PLY_PATH}")
     print(f"Output file: {OUTPUT_PLY_PATH}")
 
     if ENABLE_INTERMEDIATE_SAVES:
+        colored_points_path = get_colored_points_path()
         print(f"Intermediate saves: ENABLED")
         print(f"  Downsampled points: {DOWNSAMPLED_PLY_PATH}")
-        print(f"  Red points only: {RED_POINTS_ONLY_PLY_PATH}")
+        print(f"  {COLOR_DETECTION_MODE.title()} points only: {colored_points_path}")
         print(f"  Clustering results: {CLUSTERED_PLY_PATH}")
     else:
         print(f"Intermediate saves: DISABLED")
@@ -117,33 +119,34 @@ def main() -> None:
                 print(
                     f"Warning: Failed to save downsampled point cloud: {str(e)}")
 
-        # Step 3: Filter red points (with HSV conversion)
-        red_points, red_colors, red_indices, hsv_colors = filter_red_points_hsv(
+        # Step 3: Filter colored points (with HSV conversion)
+        colored_points, colored_colors, colored_indices, hsv_colors = filter_colored_points_hsv(
             points, colors, return_hsv=True)
 
-        # Save HSV converted and red-only results if enabled
+        # Save HSV converted and color-only results if enabled
         if ENABLE_INTERMEDIATE_SAVES:
             try:
-                # Save red-only point cloud if red points were found
-                if len(red_points) > 0:
+                # Save color-only point cloud if colored points were found
+                if len(colored_points) > 0:
+                    colored_points_path = get_colored_points_path()
                     print(
-                        f"Saving red points only to: {RED_POINTS_ONLY_PLY_PATH}")
+                        f"Saving {COLOR_DETECTION_MODE.lower()} points only to: {colored_points_path}")
                     save_ply_file_open3d(
-                        RED_POINTS_ONLY_PLY_PATH, red_points, red_colors)
+                        colored_points_path, colored_points, colored_colors)
                     print(
-                        f"Red points only PLY saved successfully ({len(red_points):,} points)")
+                        f"{COLOR_DETECTION_MODE.title()} points only PLY saved successfully ({len(colored_points):,} points)")
 
             except Exception as e:
                 print(
-                    f"Warning: Failed to save HSV/red region results: {str(e)}")
+                    f"Warning: Failed to save HSV/{COLOR_DETECTION_MODE.lower()} region results: {str(e)}")
 
-        if len(red_points) == 0:
-            print("No red points found. Exiting.")
+        if len(colored_points) == 0:
+            print(f"No {COLOR_DETECTION_MODE.lower()} points found. Exiting.")
             return
 
-        # Step 4: Cluster red points
+        # Step 4: Cluster colored points
         clusters, cluster_ids, cluster_indices = cluster_red_points(
-            red_points, red_indices)
+            colored_points, colored_indices)
 
         if len(clusters) == 0:
             print("No valid clusters found. Exiting.")
