@@ -65,7 +65,8 @@ def analyze_cluster_with_pca(
 
     # Limit cluster size
     if len(cluster_points) > MAX_POINTS_PER_CLUSTER:
-        indices = cp.random.choice(len(cluster_points), MAX_POINTS_PER_CLUSTER, replace=False)
+        rng = cp.random.RandomState(42)
+        indices = rng.choice(len(cluster_points), MAX_POINTS_PER_CLUSTER, replace=False)
         cluster_points = cluster_points[indices]
         print(f"    Downsampled to {len(cluster_points):,} points")
 
@@ -87,20 +88,20 @@ def analyze_cluster_with_pca(
         analysis_time = time.time() - start_time
 
         # Extract eigenvalue ratios (as Python floats for comparison)
-        λ1 = float(explained_variance_ratios[0])
-        λ2 = float(explained_variance_ratios[1])
-        λ3 = float(explained_variance_ratios[2])
+        ev1 = float(explained_variance_ratios[0])
+        ev2 = float(explained_variance_ratios[1])
+        ev3 = float(explained_variance_ratios[2])
 
         # Cylindrical structure criteria
         is_cylindrical = (
-            λ1 > PCA_CYLINDER_THRESHOLD
-            and λ2 > PCA_MIN_SECONDARY_VARIANCE
-            and λ3 < PCA_MAX_TERTIARY_VARIANCE
-            and abs(λ2 - λ3) < PCA_CROSS_SECTION_RATIO_THRESHOLD
+            ev1 > PCA_CYLINDER_THRESHOLD
+            and ev2 > PCA_MIN_SECONDARY_VARIANCE
+            and ev3 < PCA_MAX_TERTIARY_VARIANCE
+            and abs(ev2 - ev3) < PCA_CROSS_SECTION_RATIO_THRESHOLD
         )
 
         if not is_cylindrical:
-            print(f"    PCA rejected (not cylindrical): λ1={λ1:.3f}, λ2={λ2:.3f}, λ3={λ3:.3f}")
+            print(f"    PCA rejected (not cylindrical): ev1={ev1:.3f}, ev2={ev2:.3f}, ev3={ev3:.3f}")
             return None
 
         # Extract cylinder properties
@@ -115,12 +116,12 @@ def analyze_cluster_with_pca(
             return None
 
         # Confidence score
-        cylindrical_quality = λ1 * (1 - abs(λ2 - λ3))
+        cylindrical_quality = ev1 * (1 - abs(ev2 - ev3))
         confidence = min(cylindrical_quality, 1.0)
 
         print(
             f"    PCA cylinder detected: radius={estimated_radius:.3f}m, "
-            f"confidence={confidence:.3f}, eigenvalues=[{λ1:.3f}, {λ2:.3f}, {λ3:.3f}], "
+            f"confidence={confidence:.3f}, eigenvalues=[{ev1:.3f}, {ev2:.3f}, {ev3:.3f}], "
             f"time={analysis_time:.2f}s"
         )
 
@@ -129,11 +130,10 @@ def analyze_cluster_with_pca(
             'center': cp.asnumpy(cluster_center),
             'axis': cp.asnumpy(cylinder_axis),
             'radius': estimated_radius,
-            'inliers': np.arange(len(cluster_points)),
             'inlier_points': cp.asnumpy(cluster_points),
             'confidence': confidence,
             'cluster_id': cluster_id,
-            'eigenvalue_ratios': np.array([λ1, λ2, λ3]),
+            'eigenvalue_ratios': np.array([ev1, ev2, ev3]),
             'analysis_method': 'PCA',
         }
 
