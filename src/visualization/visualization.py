@@ -75,12 +75,7 @@ def create_visualization_output(points: np.ndarray, colors: np.ndarray,
     all_axes_colors = []
 
     # Find the pillar with the most points
-    largest_pillar = None
-    max_points = 0
-    for pillar in detected_pillars:
-        if len(pillar['inlier_points']) > max_points:
-            max_points = len(pillar['inlier_points'])
-            largest_pillar = pillar
+    largest_pillar = max(detected_pillars, key=lambda p: len(p['inlier_points']), default=None)
 
     for pillar in detected_pillars:
         if len(pillar['inlier_points']) > 0:
@@ -115,8 +110,6 @@ def create_visualization_output(points: np.ndarray, colors: np.ndarray,
             print(
                 f"Added cylinder axes for {len(detected_pillars)} pillars ({len(combined_axes_points):,} axis points)")
 
-        # Note: Cylinder surface visualization removed - showing axes only
-
     viz_time = time.time() - start_time
     print(
         f"Created visualization with {len(output_points):,} points in {viz_time:.2f} seconds")
@@ -148,8 +141,8 @@ def create_clustering_visualization(
 
     # Start with gray background for all original points
     viz_points = original_points.copy()
-    viz_colors = np.full_like(original_colors, 128,
-                              dtype=np.uint8)  # Gray background
+    viz_colors = np.full_like(original_colors, GRAY_COLOR,
+                              dtype=np.uint8)
 
     # Generate distinctive colors for each cluster
     cluster_colors = [
@@ -182,18 +175,10 @@ def create_clustering_visualization(
             indices = cluster_indices[i]
             viz_colors[indices] = cluster_color
         else:
-            # Fallback to distance-based matching (SLOW path - backward compatibility)
-            print(
-                f"  Warning: Using slow distance-based matching for cluster {cluster_id}")
-            tolerance = 1e-6
-            for cluster_point in cluster_points:
-                # Find closest point in original cloud
-                distances = np.linalg.norm(
-                    original_points - cluster_point, axis=1)
-                closest_idx = np.argmin(distances)
-                # If the distance is very small, it's a match
-                if distances[closest_idx] < tolerance:
-                    viz_colors[closest_idx] = cluster_color
+            raise ValueError(
+                f"cluster_indices required for cluster {cluster_id}. "
+                "Distance-based fallback has been removed."
+            )
 
         total_cluster_points += len(cluster_points)
 
