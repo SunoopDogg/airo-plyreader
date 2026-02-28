@@ -214,12 +214,12 @@ def show_viewer(ply_path: str, title: str, left: int, top: int) -> None:
         print(f"[Viewer] '{title}' error: {e}")
 
 
-def launch_all_viewers() -> None:
+def launch_all_viewers(targets: list[tuple[str, str]]) -> None:
     """
-    Launch Open3D viewer windows for all existing pipeline result PLY files.
+    Launch Open3D viewer windows for given PLY files.
 
-    Spawns one process per file using spawn context (CUDA fork safety).
-    Windows are tiled in a 2x2 grid.
+    Args:
+        targets: List of (title, ply_path) tuples to display.
     """
     import os
     import multiprocessing
@@ -227,18 +227,6 @@ def launch_all_viewers() -> None:
     if not os.environ.get("DISPLAY"):
         print("Warning: DISPLAY not set, skipping visualization viewers")
         return
-
-    from .. import config
-
-    # Collect (title, path) pairs in display order
-    targets = []
-    if config.DOWNSAMPLING_ENABLED:
-        targets.append(("Downsampled", config.DOWNSAMPLED_PLY_PATH))
-    if config.ENABLE_INTERMEDIATE_SAVES:
-        color = config.COLOR_DETECTION_MODE.title()
-        targets.append((f"{color} Points", config.get_colored_points_path()))
-        targets.append(("Clusters", config.CLUSTERED_PLY_PATH))
-    targets.append(("Pillars (Final)", config.OUTPUT_PLY_PATH))
 
     # Filter to existing files only
     targets = [(t, p) for t, p in targets if os.path.isfile(p)]
