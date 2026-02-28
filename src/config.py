@@ -7,6 +7,10 @@ parameters, clustering settings, geometric constraints, and visualization
 parameters.
 """
 
+import os
+import re
+from datetime import datetime
+
 # =============================================================================
 # INPUT/OUTPUT CONFIGURATION
 # =============================================================================
@@ -14,20 +18,46 @@ parameters.
 # Input/Output Configuration
 PLY_DIR = "ply"
 OUTPUT_DIR = "output"
-OUTPUT_PLY_PATH = f"{OUTPUT_DIR}/output_pillars.ply"
+
+# Runtime paths — set by create_run_output_dir()
+_run_dir = None
+OUTPUT_PLY_PATH = None
+DOWNSAMPLED_PLY_PATH = None
+CLUSTERED_PLY_PATH = None
 
 # Intermediate Results Configuration
-# Enable/disable saving intermediate results
 ENABLE_INTERMEDIATE_SAVES = True
-# Path for downsampled point cloud
-DOWNSAMPLED_PLY_PATH = f"{OUTPUT_DIR}/downsampled_points.ply"
-# Path for clustering visualization
-CLUSTERED_PLY_PATH = f"{OUTPUT_DIR}/clustered_points.ply"
-# Path for colored points only (filtered color regions) - dynamically named based on mode
 
 
-def get_colored_points_path():
-    return f"{OUTPUT_DIR}/{COLOR_DETECTION_MODE.lower()}_points_only.ply"
+def create_run_output_dir(ply_path: str) -> str:
+    """Create a timestamped output directory for this pipeline run.
+
+    Args:
+        ply_path: Full path to the selected PLY file.
+
+    Returns:
+        The created directory path.
+    """
+    global _run_dir, OUTPUT_PLY_PATH, DOWNSAMPLED_PLY_PATH, CLUSTERED_PLY_PATH
+
+    # Extract and sanitize filename
+    ply_name = os.path.splitext(os.path.basename(ply_path))[0]
+    ply_name = ply_name.replace(" ", "_")
+    ply_name = re.sub(r"[^a-zA-Z0-9_.\-]", "", ply_name)
+
+    # Generate compact timestamp
+    timestamp = datetime.now().strftime("%y%m%d%H%M%S")
+
+    # Create directory
+    _run_dir = os.path.join(OUTPUT_DIR, f"{ply_name}-{timestamp}")
+    os.makedirs(_run_dir, exist_ok=True)
+
+    # Set output paths
+    OUTPUT_PLY_PATH = os.path.join(_run_dir, "output_pillars.ply")
+    DOWNSAMPLED_PLY_PATH = os.path.join(_run_dir, "downsampled_points.ply")
+    CLUSTERED_PLY_PATH = os.path.join(_run_dir, "clustered_points.ply")
+
+    return _run_dir
 
 
 # =============================================================================
@@ -42,22 +72,19 @@ GPU_CHUNK_SIZE = 20_000_000            # Max points per GPU processing chunk
 # Color Detection Mode: 'red', 'blue', 'green'
 COLOR_DETECTION_MODE = 'blue'
 
-# HSV Color Segmentation Parameters for different colors
-# Red color ranges
-HSV_RED_H_RANGES = [(0, 10), (350, 360)]  # Hue ranges for red color
-HSV_RED_S_MIN = 0.55                      # Minimum saturation (0-1)
-HSV_RED_V_MIN = 0.45                      # Minimum value/brightness (0-1)
 
-# Blue color ranges (expanded for better detection)
-HSV_BLUE_H_RANGES = [(220, 250)]          # Expanded hue range for blue color
-HSV_BLUE_S_MIN = 0.80                     # Reduced minimum saturation (0-1)
-# Reduced minimum value/brightness (0-1)
-HSV_BLUE_V_MIN = 0.25
+def get_colored_points_path():
+    return os.path.join(_run_dir, f"{COLOR_DETECTION_MODE.lower()}_points_only.ply")
 
-# Green color ranges
-HSV_GREEN_H_RANGES = [(80, 160)]          # Hue range for green color
-HSV_GREEN_S_MIN = 0.40                    # Minimum saturation (0-1)
-HSV_GREEN_V_MIN = 0.35                    # Minimum value/brightness (0-1)
+
+# HSV Color Segmentation Parameters
+# H: 0-360 degrees (pipeline uses custom GPU RGB→HSV, not OpenCV's 0-180 range)
+# S: 0-1, V: 0-1
+COLOR_PARAMS = {
+    'red':   {'h_ranges': [(0, 10), (350, 360)], 's_min': 0.55, 'v_min': 0.45},
+    'blue':  {'h_ranges': [(220, 250)],           's_min': 0.80, 'v_min': 0.25},
+    'green': {'h_ranges': [(80, 160)],             's_min': 0.40, 'v_min': 0.35},
+}
 
 # =============================================================================
 # DBSCAN CLUSTERING PARAMETERS
