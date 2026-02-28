@@ -265,7 +265,15 @@ def main() -> None:
 
         # Launch interactive viewers if enabled
         if ENABLE_VISUALIZATION:
-            launch_all_viewers()
+            targets = []
+            if DOWNSAMPLING_ENABLED:
+                targets.append(("Downsampled", config.DOWNSAMPLED_PLY_PATH))
+            if ENABLE_INTERMEDIATE_SAVES:
+                color = COLOR_DETECTION_MODE.title()
+                targets.append((f"{color} Points", config.get_colored_points_path()))
+                targets.append(("Clusters", config.CLUSTERED_PLY_PATH))
+            targets.append(("Pillars (Final)", config.OUTPUT_PLY_PATH))
+            launch_all_viewers(targets)
 
     except Exception as e:
         print(f"Error in pipeline execution: {str(e)}")
