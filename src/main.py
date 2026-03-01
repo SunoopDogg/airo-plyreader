@@ -307,7 +307,15 @@ def visualize_results(
 
 def main() -> None:
     """Main pipeline execution."""
-    input_ply_path = prompt_file_selection(list_ply_files())
+    source = prompt_source_selection()
+
+    if source == "downsampled":
+        input_ply_path = prompt_file_selection(list_ply_files(DOWNSAMPLE_DIR))
+        is_downsampled = True
+    else:
+        input_ply_path = prompt_file_selection(list_ply_files())
+        is_downsampled = False
+
     color_mode = prompt_color_selection()
     set_color_mode(color_mode)
 
@@ -322,7 +330,6 @@ def main() -> None:
 
     if ENABLE_INTERMEDIATE_SAVES:
         print(f"Intermediate saves: ENABLED")
-        print(f"  Downsampled points: {config.DOWNSAMPLED_PLY_PATH}")
         print(f"  {config.COLOR_DETECTION_MODE.title()} points only: {config.get_colored_points_path()}")
         print(f"  Clustering results: {config.CLUSTERED_PLY_PATH}")
     else:
@@ -333,7 +340,11 @@ def main() -> None:
 
     try:
         init_gpu()
-        cloud = load_and_downsample(input_ply_path)
+
+        if is_downsampled:
+            cloud = load_only(input_ply_path)
+        else:
+            cloud = load_and_downsample(input_ply_path)
 
         # ROI selection
         roi = select_roi_gui(cloud)
@@ -357,8 +368,8 @@ def main() -> None:
         # Launch interactive viewers if enabled
         if ENABLE_VISUALIZATION:
             targets = []
-            if DOWNSAMPLING_ENABLED:
-                targets.append(("Downsampled", config.DOWNSAMPLED_PLY_PATH))
+            if not is_downsampled and DOWNSAMPLING_ENABLED:
+                targets.append(("Downsampled", downsample_cache_path(input_ply_path)))
             if ENABLE_INTERMEDIATE_SAVES:
                 color = config.COLOR_DETECTION_MODE.title()
                 targets.append((f"{color} Points", config.get_colored_points_path()))
