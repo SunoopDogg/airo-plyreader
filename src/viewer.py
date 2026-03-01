@@ -10,7 +10,8 @@ from pathlib import Path
 
 def list_run_dirs() -> list[Path]:
     """Scan output directory for previous run subdirectories."""
-    output_dir = Path(__file__).parent / "output"
+    from .config import OUTPUT_DIR
+    output_dir = Path(OUTPUT_DIR)
     if not output_dir.is_dir():
         return []
     return sorted(
