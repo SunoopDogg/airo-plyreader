@@ -17,12 +17,12 @@ from datetime import datetime
 
 # Input/Output Configuration
 PLY_DIR = "ply"
+DOWNSAMPLE_DIR = "ply/downsample"
 OUTPUT_DIR = "output"
 
 # Runtime paths — set by create_run_output_dir()
 _run_dir = None
 OUTPUT_PLY_PATH = None
-DOWNSAMPLED_PLY_PATH = None
 CLUSTERED_PLY_PATH = None
 
 # Intermediate Results Configuration
@@ -38,7 +38,7 @@ def create_run_output_dir(ply_path: str) -> str:
     Returns:
         The created directory path.
     """
-    global _run_dir, OUTPUT_PLY_PATH, DOWNSAMPLED_PLY_PATH, CLUSTERED_PLY_PATH
+    global _run_dir, OUTPUT_PLY_PATH, CLUSTERED_PLY_PATH
 
     # Extract and sanitize filename
     ply_name = os.path.splitext(os.path.basename(ply_path))[0]
@@ -54,7 +54,6 @@ def create_run_output_dir(ply_path: str) -> str:
 
     # Set output paths
     OUTPUT_PLY_PATH = os.path.join(_run_dir, "output_pillars.ply")
-    DOWNSAMPLED_PLY_PATH = os.path.join(_run_dir, "downsampled_points.ply")
     CLUSTERED_PLY_PATH = os.path.join(_run_dir, "clustered_points.ply")
 
     return _run_dir
