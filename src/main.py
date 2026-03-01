@@ -15,12 +15,12 @@ from pathlib import Path
 
 from . import config
 from .config import (
-    PLY_DIR, ENABLE_INTERMEDIATE_SAVES, COLOR_PARAMS,
-    GPU_DEVICE_ID, DOWNSAMPLING_ENABLED, ENABLE_VISUALIZATION,
+    PLY_DIR, DOWNSAMPLE_DIR, ENABLE_INTERMEDIATE_SAVES, COLOR_PARAMS,
+    GPU_DEVICE_ID, DOWNSAMPLING_ENABLED, DOWNSAMPLING_VOXEL_SIZE, ENABLE_VISUALIZATION,
     create_run_output_dir, set_color_mode,
 )
 from .core.gpu import PointCloudGPU
-from .core.utils import save_intermediate
+from .core.utils import save_intermediate, format_voxel_size
 from .file_io.ply_io import load_ply_file_open3d, save_ply_file_open3d
 from .preprocessing.downsampling import downsample_gpu
 from .preprocessing.color_segmentation import segment_by_color
@@ -34,15 +34,46 @@ from .visualization.visualization import create_visualization_output, create_clu
 # FILE SELECTION
 # =============================================================================
 
-def list_ply_files() -> list[Path]:
-    """Scan PLY_DIR and return sorted list of .ply file paths."""
-    ply_dir = Path(PLY_DIR)
-    if not ply_dir.is_dir():
-        raise FileNotFoundError(f"PLY directory not found: {PLY_DIR}")
+def prompt_source_selection() -> str:
+    """Let the user choose between original and downsampled PLY files.
 
-    ply_files = sorted(ply_dir.glob("*.ply"))
+    Returns:
+        'original' or 'downsampled'
+    """
+    downsample_dir = Path(DOWNSAMPLE_DIR)
+    has_downsampled = downsample_dir.is_dir() and any(downsample_dir.glob("*.ply"))
+
+    if not has_downsampled:
+        return "original"
+
+    print("\nSelect source type:")
+    print("  1) Original PLY")
+    print("  2) Downsampled PLY")
+    print()
+
+    while True:
+        try:
+            choice = int(input("Select source number (1-2): "))
+            if choice == 1:
+                print("Selected: Original PLY\n")
+                return "original"
+            elif choice == 2:
+                print("Selected: Downsampled PLY\n")
+                return "downsampled"
+        except (ValueError, EOFError):
+            pass
+        print("Please enter 1 or 2.")
+
+
+def list_ply_files(ply_dir: str = PLY_DIR) -> list[Path]:
+    """Scan directory and return sorted list of .ply file paths."""
+    ply_path = Path(ply_dir)
+    if not ply_path.is_dir():
+        raise FileNotFoundError(f"PLY directory not found: {ply_dir}")
+
+    ply_files = sorted(ply_path.glob("*.ply"))
     if not ply_files:
-        raise FileNotFoundError(f"No .ply files found in {PLY_DIR}")
+        raise FileNotFoundError(f"No .ply files found in {ply_dir}")
 
     return ply_files
 
@@ -128,14 +159,34 @@ def load_and_downsample(ply_path: str) -> PointCloudGPU:
     if DOWNSAMPLING_ENABLED:
         ds_points, ds_colors = downsample_gpu(cloud.points, cloud.colors)
         cloud = PointCloudGPU(ds_points, ds_colors)
+
+        # Always save downsampled result to cache
+        cache_path = downsample_cache_path(ply_path)
+        pts_cpu, cols_cpu = cloud.to_cpu()
+        try:
+            print(f"Saving downsampled cache to: {cache_path}")
+            save_ply_file_open3d(cache_path, pts_cpu, cols_cpu)
+            print(f"Downsampled cache saved successfully")
+        except Exception as e:
+            print(f"Warning: Failed to save downsampled cache: {str(e)}")
     else:
         print("  Downsampling: DISABLED - using original point cloud")
 
-    # Save intermediate
-    if ENABLE_INTERMEDIATE_SAVES:
-        pts_cpu, cols_cpu = cloud.to_cpu()
-        save_intermediate(pts_cpu, cols_cpu, config.DOWNSAMPLED_PLY_PATH, "downsampled point cloud")
+    return cloud
 
+
+def downsample_cache_path(ply_path: str) -> str:
+    """Build the cache file path for a downsampled PLY."""
+    ply_name = Path(ply_path).stem
+    voxel_str = format_voxel_size(DOWNSAMPLING_VOXEL_SIZE)
+    return str(Path(DOWNSAMPLE_DIR) / f"{ply_name}-{voxel_str}.ply")
+
+
+def load_only(ply_path: str) -> PointCloudGPU:
+    """Load PLY file and transfer to GPU without downsampling."""
+    points_np, colors_np = load_ply_file_open3d(ply_path)
+    cloud = PointCloudGPU.from_numpy(points_np, colors_np)
+    print(f"Transferred {len(cloud):,} points to GPU (downsampling skipped)")
     return cloud
 
 
