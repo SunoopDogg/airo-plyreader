@@ -69,23 +69,27 @@ GPU_CHUNK_SIZE = 20_000_000            # Max points per GPU processing chunk
 # COLOR DETECTION MODE AND PARAMETERS
 # =============================================================================
 # Color Detection Mode: 'red', 'blue', 'green'
-COLOR_DETECTION_MODE = 'blue'
+COLOR_DETECTION_MODE = None
 
 
 def set_color_mode(mode: str) -> None:
-    """Set the active color detection mode.
+    """Set the color detection mode at runtime.
 
     Args:
-        mode: One of 'red', 'blue', or 'green'.
+        mode: Color name (must be a key in COLOR_PARAMS).
     """
     global COLOR_DETECTION_MODE
+    mode = mode.lower()
     if mode not in COLOR_PARAMS:
-        raise ValueError(f"Unknown color mode '{mode}'. Expected one of: {list(COLOR_PARAMS.keys())}")
+        raise ValueError(
+            f"Unknown color mode '{mode}'. "
+            f"Available: {', '.join(COLOR_PARAMS.keys())}"
+        )
     COLOR_DETECTION_MODE = mode
 
 
 def get_colored_points_path():
-    return os.path.join(_run_dir, f"{COLOR_DETECTION_MODE.lower()}_points_only.ply")
+    return os.path.join(_run_dir, "filtered_points_only.ply")
 
 
 # HSV Color Segmentation Parameters
@@ -138,7 +142,7 @@ ENABLE_VISUALIZATION = True
 # Downsampling Parameters (GPU Voxel Grid)
 DOWNSAMPLING_ENABLED = True                # Enable/disable downsampling step
 # Voxel size for voxel grid method (meters)
-DOWNSAMPLING_VOXEL_SIZE = 0.01
+DOWNSAMPLING_VOXEL_SIZE = 0.0005
 
 # =============================================================================
 # PCA ANALYSIS PARAMETERS
