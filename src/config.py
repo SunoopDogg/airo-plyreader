@@ -114,13 +114,17 @@ DBSCAN_MIN_SAMPLES = 50                    # Minimum points to form a cluster
 # CYLINDER GEOMETRIC CONSTRAINTS
 # =============================================================================
 
-# Cylinder Geometric Constraints (RELAXED for more pillar types)
-# Relaxed minimum pillar radius (meters)
+# Cylinder Geometric Constraints (tightened to match real-world pillar dimensions)
+# Minimum pillar radius (meters)
 PILLAR_RADIUS_MIN = 0.01
-# Relaxed maximum pillar radius (meters)
-PILLAR_RADIUS_MAX = 100.0
-# Relaxed minimum pillar height (meters)
+# Maximum pillar radius (meters)
+PILLAR_RADIUS_MAX = 0.30
+# Minimum pillar height (meters)
 PILLAR_HEIGHT_MIN = 0.1
+# Maximum pillar height (meters)
+PILLAR_HEIGHT_MAX = 2.0
+# Maximum allowed angle between pillar axis and Z-axis (degrees)
+PILLAR_AXIS_MAX_ANGLE_DEG = 10.0
 
 # =============================================================================
 # VISUALIZATION PARAMETERS
