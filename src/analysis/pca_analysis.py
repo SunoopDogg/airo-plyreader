@@ -12,6 +12,7 @@ from typing import List, Optional, Dict, Any
 from cuml.decomposition import PCA
 from ..config import (
     PILLAR_RADIUS_MIN, PILLAR_RADIUS_MAX, PILLAR_HEIGHT_MIN,
+    PILLAR_HEIGHT_MAX, PILLAR_AXIS_MAX_ANGLE_DEG,
     MAX_POINTS_PER_CLUSTER, PCA_CYLINDER_THRESHOLD,
     PCA_CROSS_SECTION_RATIO_THRESHOLD, PCA_MIN_SECONDARY_VARIANCE,
     PCA_MAX_TERTIARY_VARIANCE, TOP_CLUSTERS_TO_ANALYZE,
@@ -39,6 +40,16 @@ def validate_pca_geometry(
 
     if height < PILLAR_HEIGHT_MIN:
         print(f"    PCA cylinder rejected (height={height:.3f}m)")
+        return False
+
+    if height > PILLAR_HEIGHT_MAX:
+        print(f"    PCA cylinder rejected (height={height:.3f}m, max={PILLAR_HEIGHT_MAX}m)")
+        return False
+
+    cos_angle = float(cp.abs(axis_normalized[2]))
+    angle_deg = float(cp.degrees(cp.arccos(cp.minimum(cos_angle, 1.0))))
+    if angle_deg > PILLAR_AXIS_MAX_ANGLE_DEG:
+        print(f"    PCA cylinder rejected (angle={angle_deg:.1f}° from Z, max={PILLAR_AXIS_MAX_ANGLE_DEG}°)")
         return False
 
     return True
