@@ -72,6 +72,16 @@ GPU_CHUNK_SIZE = 20_000_000            # Max points per GPU processing chunk
 COLOR_DETECTION_MODE = 'blue'
 
 
+def set_color_mode(mode: str) -> None:
+    """Set the active color detection mode.
+
+    Args:
+        mode: One of 'red', 'blue', or 'green'.
+    """
+    global COLOR_DETECTION_MODE
+    COLOR_DETECTION_MODE = mode
+
+
 def get_colored_points_path():
     return os.path.join(_run_dir, f"{COLOR_DETECTION_MODE.lower()}_points_only.ply")
 
