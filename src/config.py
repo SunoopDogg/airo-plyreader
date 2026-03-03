@@ -79,6 +79,8 @@ def set_color_mode(mode: str) -> None:
         mode: One of 'red', 'blue', or 'green'.
     """
     global COLOR_DETECTION_MODE
+    if mode not in COLOR_PARAMS:
+        raise ValueError(f"Unknown color mode '{mode}'. Expected one of: {list(COLOR_PARAMS.keys())}")
     COLOR_DETECTION_MODE = mode
 
 
