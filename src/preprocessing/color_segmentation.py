@@ -7,11 +7,7 @@ HSV convention: H: 0-360, S: 0-1, V: 0-1 (matches config values directly).
 
 import cupy as cp
 import time
-from ..config import (
-    COLOR_DETECTION_MODE,
-    GPU_CHUNK_SIZE,
-    COLOR_PARAMS,
-)
+from ..config import GPU_CHUNK_SIZE
 
 
 def rgb_to_hsv_gpu(rgb_colors: cp.ndarray) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray]:
@@ -125,6 +121,9 @@ def _filter_chunk(
 def segment_by_color(
     points: cp.ndarray,
     colors: cp.ndarray,
+    h_ranges: list[tuple[float, float]],
+    s_min: float,
+    v_min: float,
 ):
     """
     Filter points by HSV color criteria on GPU. Uses chunked processing
@@ -133,23 +132,17 @@ def segment_by_color(
     Args:
         points: CuPy array of shape (N, 3), float32
         colors: CuPy array of shape (N, 3), uint8
+        h_ranges: List of (h_min, h_max) hue range tuples
+        s_min: Minimum saturation threshold
+        v_min: Minimum value/brightness threshold
 
     Returns:
         Tuple of (colored_points, colored_colors, colored_indices)
         All returned arrays are CuPy arrays.
     """
-    color_name = COLOR_DETECTION_MODE.lower()
-    print(f"Filtering {color_name} points using HSV color space (GPU)...")
+    h_str = ", ".join(f"{lo:.0f}-{hi:.0f}" for lo, hi in h_ranges)
+    print(f"Filtering points by HSV (H[{h_str}], S>={s_min:.2f}, V>={v_min:.2f}) on GPU...")
     start_time = time.time()
-
-    # Get color parameters based on mode
-    color_params = COLOR_PARAMS.get(color_name)
-    if not color_params:
-        raise ValueError(f"Unsupported color detection mode: {COLOR_DETECTION_MODE}. "
-                         f"Available: {', '.join(COLOR_PARAMS.keys())}")
-    h_ranges = color_params['h_ranges']
-    s_min = color_params['s_min']
-    v_min = color_params['v_min']
 
     n_points = len(points)
 
@@ -211,13 +204,13 @@ def segment_by_color(
     filter_time = time.time() - start_time
     n_colored = len(filtered_points)
     print(
-        f"Found {n_colored:,} {color_name} points "
+        f"Found {n_colored:,} matched points "
         f"({n_colored / n_points * 100:.2f}%) in {filter_time:.2f} seconds"
     )
 
     if hsv_stats is not None:
         print(
-            f"  {color_name.title()} points HSV ranges: "
+            f"  Matched points HSV ranges: "
             f"H[{hsv_stats['h_min']:.1f}-{hsv_stats['h_max']:.1f}], "
             f"S[{hsv_stats['s_min']:.3f}-{hsv_stats['s_max']:.3f}], "
             f"V[{hsv_stats['v_min']:.3f}-{hsv_stats['v_max']:.3f}]"
