@@ -8,6 +8,7 @@ for setting color filter parameters.
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+from matplotlib.colors import hsv_to_rgb
 from matplotlib.widgets import Slider, Button
 import numpy as np
 import cupy as cp
@@ -78,7 +79,11 @@ def analyze_hsv_gui(
     ax_skip = fig.add_axes([0.84, 0.05, 0.12, 0.06])
 
     # --- Histograms ---
-    ax_h.hist(h_cpu, bins=360, range=(0, 360), color='gray', alpha=0.7)
+    # H histogram with per-bar hue coloring
+    h_counts, h_edges = np.histogram(h_cpu, bins=360, range=(0, 360))
+    h_centers = (h_edges[:-1] + h_edges[1:]) / 2
+    h_bar_colors = [hsv_to_rgb((h_val / 360, 1, 1)) for h_val in h_centers]
+    ax_h.bar(h_centers, h_counts, width=1.0, color=h_bar_colors, alpha=0.85)
     ax_h.set_title('Hue (H)')
     ax_h.set_xlabel('Degrees')
     ax_h.set_xlim(0, 360)
