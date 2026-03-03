@@ -46,11 +46,12 @@ def validate_pca_geometry(
         print(f"    PCA cylinder rejected (height={height:.3f}m, max={PILLAR_HEIGHT_MAX}m)")
         return False
 
-    cos_angle = float(cp.abs(axis_normalized[2]))
-    angle_deg = float(cp.degrees(cp.arccos(cp.minimum(cos_angle, 1.0))))
-    if angle_deg > PILLAR_AXIS_MAX_ANGLE_DEG:
-        print(f"    PCA cylinder rejected (angle={angle_deg:.1f}° from Z, max={PILLAR_AXIS_MAX_ANGLE_DEG}°)")
-        return False
+    if PILLAR_AXIS_MAX_ANGLE_DEG is not None:
+        cos_angle = float(cp.abs(axis_normalized[2]))
+        angle_deg = float(cp.degrees(cp.arccos(cp.minimum(cos_angle, 1.0))))
+        if angle_deg > PILLAR_AXIS_MAX_ANGLE_DEG:
+            print(f"    PCA cylinder rejected (angle={angle_deg:.1f}° from Z, max={PILLAR_AXIS_MAX_ANGLE_DEG}°)")
+            return False
 
     return True
 

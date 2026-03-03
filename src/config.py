@@ -124,7 +124,8 @@ PILLAR_HEIGHT_MIN = 0.1
 # Maximum pillar height (meters)
 PILLAR_HEIGHT_MAX = 2.0
 # Maximum allowed angle between pillar axis and Z-axis (degrees)
-PILLAR_AXIS_MAX_ANGLE_DEG = 10.0
+# Set to None to disable angle constraint
+PILLAR_AXIS_MAX_ANGLE_DEG = None
 
 # =============================================================================
 # VISUALIZATION PARAMETERS
