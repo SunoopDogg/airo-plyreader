@@ -15,9 +15,9 @@ from pathlib import Path
 
 from . import config
 from .config import (
-    PLY_DIR, DOWNSAMPLE_DIR, ENABLE_INTERMEDIATE_SAVES, COLOR_PARAMS,
+    PLY_DIR, DOWNSAMPLE_DIR, ENABLE_INTERMEDIATE_SAVES,
     GPU_DEVICE_ID, DOWNSAMPLING_ENABLED, DOWNSAMPLING_VOXEL_SIZE, ENABLE_VISUALIZATION,
-    create_run_output_dir, set_color_mode,
+    create_run_output_dir,
 )
 from .core.gpu import PointCloudGPU
 from .core.utils import save_intermediate, format_voxel_size
@@ -25,6 +25,7 @@ from .file_io.ply_io import load_ply_file_open3d, save_ply_file_open3d
 from .preprocessing.downsampling import downsample_gpu
 from .preprocessing.color_segmentation import segment_by_color
 from .preprocessing.roi_selection import select_roi_gui, crop_to_roi
+from .preprocessing.hsv_analysis import analyze_hsv_gui
 from .analysis.clustering import cluster_colored_points
 from .analysis.pca_analysis import detect_pillars_with_pca
 from .visualization.visualization import create_visualization_output, create_clustering_visualization, launch_all_viewers
@@ -103,36 +104,6 @@ def prompt_file_selection(ply_files: list[Path]) -> str:
 
 
 # =============================================================================
-# COLOR SELECTION
-# =============================================================================
-
-def prompt_color_selection() -> str:
-    """Let the user pick a color mode interactively."""
-    colors = list(COLOR_PARAMS.keys())
-
-    if len(colors) == 1:
-        selected = colors[0]
-        print(f"Auto-selected (only color): {selected.title()}")
-        return selected
-
-    print("\nAvailable colors:")
-    for i, c in enumerate(colors, 1):
-        print(f"  {i}) {c.title()}")
-    print()
-
-    while True:
-        try:
-            choice = int(input(f"Select color number (1-{len(colors)}): "))
-            if 1 <= choice <= len(colors):
-                selected = colors[choice - 1]
-                print(f"Selected: {selected.title()}\n")
-                return selected
-        except (ValueError, EOFError):
-            pass
-        print(f"Please enter a number between 1 and {len(colors)}.")
-
-
-# =============================================================================
 # GPU INITIALIZATION
 # =============================================================================
 
@@ -190,11 +161,11 @@ def load_only(ply_path: str) -> PointCloudGPU:
     return cloud
 
 
-def detect_pillars(cloud: PointCloudGPU) -> list[Dict[str, Any]]:
+def detect_pillars(cloud: PointCloudGPU, h_ranges: list, s_min: float, v_min: float) -> list[Dict[str, Any]]:
     """Run color segmentation → clustering → PCA analysis."""
     # Color segmentation
     colored_points, colored_colors, colored_indices = segment_by_color(
-        cloud.points, cloud.colors
+        cloud.points, cloud.colors, h_ranges, s_min, v_min
     )
 
     # Save color-filtered intermediate
@@ -202,11 +173,11 @@ def detect_pillars(cloud: PointCloudGPU) -> list[Dict[str, Any]]:
         save_intermediate(
             cp.asnumpy(colored_points), cp.asnumpy(colored_colors),
             config.get_colored_points_path(),
-            f"{config.COLOR_DETECTION_MODE.title()} points only ({len(colored_points):,} points)",
+            f"Filtered points ({len(colored_points):,} points)",
         )
 
     if len(colored_points) == 0:
-        print(f"No {config.COLOR_DETECTION_MODE.lower()} points found. Exiting.")
+        print("No matched points found. Exiting.")
         return []
 
     # Clustering
@@ -316,21 +287,17 @@ def main() -> None:
         input_ply_path = prompt_file_selection(list_ply_files())
         is_downsampled = False
 
-    color_mode = prompt_color_selection()
-    set_color_mode(color_mode)
-
     run_dir = create_run_output_dir(input_ply_path)
     print(f"Output directory: {run_dir}")
 
-    print(f"{config.COLOR_DETECTION_MODE.title()} Pillar Detection Pipeline")
+    print("Pillar Detection Pipeline")
     print("=" * 60)
-    print(f"Color detection mode: {config.COLOR_DETECTION_MODE.upper()}")
     print(f"Input file: {input_ply_path}")
     print(f"Output file: {config.OUTPUT_PLY_PATH}")
 
     if ENABLE_INTERMEDIATE_SAVES:
         print(f"Intermediate saves: ENABLED")
-        print(f"  {config.COLOR_DETECTION_MODE.title()} points only: {config.get_colored_points_path()}")
+        print(f"  Filtered points: {config.get_colored_points_path()}")
         print(f"  Clustering results: {config.CLUSTERED_PLY_PATH}")
     else:
         print(f"Intermediate saves: DISABLED")
@@ -351,7 +318,14 @@ def main() -> None:
         if roi is not None:
             cloud = crop_to_roi(cloud, roi)
 
-        detected_pillars = detect_pillars(cloud)
+        # HSV analysis and filter setting
+        hsv_result = analyze_hsv_gui(cloud)
+        if hsv_result is None:
+            print("HSV filter skipped. Exiting.")
+            return
+        h_ranges, s_min, v_min = hsv_result
+
+        detected_pillars = detect_pillars(cloud, h_ranges, s_min, v_min)
 
         if not detected_pillars:
             print("No pillars detected after PCA analysis. Exiting.")
@@ -371,8 +345,7 @@ def main() -> None:
             if not is_downsampled and DOWNSAMPLING_ENABLED:
                 targets.append(("Downsampled", downsample_cache_path(input_ply_path)))
             if ENABLE_INTERMEDIATE_SAVES:
-                color = config.COLOR_DETECTION_MODE.title()
-                targets.append((f"{color} Points", config.get_colored_points_path()))
+                targets.append(("Filtered Points", config.get_colored_points_path()))
                 targets.append(("Clusters", config.CLUSTERED_PLY_PATH))
             targets.append(("Pillars (Final)", config.OUTPUT_PLY_PATH))
             launch_all_viewers(targets)
