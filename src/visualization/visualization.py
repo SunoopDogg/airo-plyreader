@@ -34,7 +34,7 @@ def generate_pca_axes_points(pillar: Dict[str, Any], axis_length_factor: float =
         height = np.max(projections) - np.min(projections)
         axis_length = height * axis_length_factor
     else:
-        axis_length = pillar['radius'] * 10  # Fallback
+        axis_length = 1.0  # Fixed fallback when inlier_points is empty
 
     # Generate only the main axis (cylinder direction)
     primary_axis = axis / np.linalg.norm(axis)
