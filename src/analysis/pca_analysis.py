@@ -154,9 +154,94 @@ def analyze_cluster_with_pca(
         return None
 
 
+def analyze_cluster_with_traditional_pca(
+    cluster_points: cp.ndarray,
+    cluster_id: int,
+) -> Optional[Dict[str, Any]]:
+    """
+    Analyze point cluster using traditional PCA — PC1 is the reference axis.
+
+    No cylindrical structure criteria. Height validated inline.
+
+    Args:
+        cluster_points: CuPy array of shape (N, 3), float32
+        cluster_id: Cluster identifier for logging
+
+    Returns:
+        Dictionary with NumPy-converted pillar parameters, or None
+    """
+    if len(cluster_points) < 10:
+        return None
+
+    print(f"  Analyzing cluster {cluster_id} with traditional PCA ({len(cluster_points):,} points)...")
+
+    # Limit cluster size
+    if len(cluster_points) > MAX_POINTS_PER_CLUSTER:
+        rng = cp.random.RandomState(42)
+        indices = rng.choice(len(cluster_points), MAX_POINTS_PER_CLUSTER, replace=False)
+        cluster_points = cluster_points[indices]
+        print(f"    Downsampled to {len(cluster_points):,} points")
+
+    try:
+        start_time = time.time()
+
+        # Center the data
+        cluster_center = cp.mean(cluster_points, axis=0)
+        centered_points = cluster_points - cluster_center
+
+        # cuML PCA
+        pca = PCA(n_components=3)
+        pca.fit(centered_points)
+
+        components = cp.asarray(pca.components_)
+        explained_variance_ratios = cp.asarray(pca.explained_variance_ratio_)
+
+        analysis_time = time.time() - start_time
+
+        ev1 = float(explained_variance_ratios[0])
+        ev2 = float(explained_variance_ratios[1])
+        ev3 = float(explained_variance_ratios[2])
+
+        # PC1 is the reference axis — no cylindrical criteria
+        reference_axis = components[0]
+
+        # Inline height validation
+        axis_normalized = reference_axis / cp.linalg.norm(reference_axis)
+        projections = cp.dot(cluster_points - cluster_center, axis_normalized)
+        height = float(cp.max(projections) - cp.min(projections))
+
+        if height < PILLAR_HEIGHT_MIN:
+            print(f"    Traditional PCA rejected (height={height:.3f}m, min={PILLAR_HEIGHT_MIN}m)")
+            return None
+
+        if height > PILLAR_HEIGHT_MAX:
+            print(f"    Traditional PCA rejected (height={height:.3f}m, max={PILLAR_HEIGHT_MAX}m)")
+            return None
+
+        print(
+            f"    Traditional PCA accepted: height={height:.3f}m, "
+            f"eigenvalues=[{ev1:.3f}, {ev2:.3f}, {ev3:.3f}], "
+            f"time={analysis_time:.2f}s"
+        )
+
+        return {
+            'center': cp.asnumpy(cluster_center),
+            'axis': cp.asnumpy(reference_axis),
+            'inlier_points': cp.asnumpy(cluster_points),
+            'cluster_id': cluster_id,
+            'eigenvalue_ratios': np.array([ev1, ev2, ev3]),
+            'analysis_method': 'traditional_PCA',
+        }
+
+    except Exception as e:
+        print(f"    Traditional PCA analysis error: {str(e)}")
+        return None
+
+
 def detect_pillars_with_pca(
     clusters: List[cp.ndarray],
     cluster_ids: List[int],
+    method: str = 'cylinder',
 ) -> List[Dict[str, Any]]:
     """
     Detect pillars by analyzing clusters with cuML PCA.
@@ -164,11 +249,12 @@ def detect_pillars_with_pca(
     Args:
         clusters: List of CuPy point arrays
         cluster_ids: List of cluster identifiers
+        method: PCA method to use — 'cylinder' (default) or 'traditional'
 
     Returns:
         List of detected pillar dicts (NumPy/Python types)
     """
-    print("Detecting pillars using PCA analysis (GPU)...")
+    print(f"Detecting pillars using {method} PCA analysis (GPU)...")
     start_time = time.time()
 
     # Sort clusters by point count (largest first)
@@ -190,7 +276,10 @@ def detect_pillars_with_pca(
 
     detected_pillars = []
     for cluster, cid in clusters_to_analyze:
-        pillar = analyze_cluster_with_pca(cluster, cid)
+        if method == 'traditional':
+            pillar = analyze_cluster_with_traditional_pca(cluster, cid)
+        else:
+            pillar = analyze_cluster_with_pca(cluster, cid)
         if pillar is not None:
             detected_pillars.append(pillar)
 
@@ -198,12 +287,21 @@ def detect_pillars_with_pca(
     print(f"Detected {len(detected_pillars)} pillars in {detection_time:.2f} seconds")
 
     if detected_pillars:
-        confidences = [p['confidence'] for p in detected_pillars]
-        radii = [p['radius'] for p in detected_pillars]
-        print(f"  Confidence range: {min(confidences):.3f} - {max(confidences):.3f}")
-        print(f"  Radius range: {min(radii):.3f}m - {max(radii):.3f}m")
+        if method == 'traditional':
+            point_counts = [len(p['inlier_points']) for p in detected_pillars]
+            print(f"  Point count range: {min(point_counts):,} - {max(point_counts):,}")
+            ev_first = [p['eigenvalue_ratios'][0] for p in detected_pillars]
+            print(f"  PC1 variance ratio range: {min(ev_first):.3f} - {max(ev_first):.3f}")
+        else:
+            confidences = [p['confidence'] for p in detected_pillars]
+            radii = [p['radius'] for p in detected_pillars]
+            print(f"  Confidence range: {min(confidences):.3f} - {max(confidences):.3f}")
+            print(f"  Radius range: {min(radii):.3f}m - {max(radii):.3f}m")
     else:
         print("  No pillars were detected")
 
-    detected_pillars.sort(key=lambda p: p['confidence'], reverse=True)
+    if method == 'traditional':
+        detected_pillars.sort(key=lambda p: len(p['inlier_points']), reverse=True)
+    else:
+        detected_pillars.sort(key=lambda p: p['confidence'], reverse=True)
     return detected_pillars
