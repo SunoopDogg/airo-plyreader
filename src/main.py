@@ -103,6 +103,31 @@ def prompt_file_selection(ply_files: list[Path]) -> str:
         print(f"Please enter a number between 1 and {len(ply_files)}.")
 
 
+def prompt_pca_method() -> str:
+    """Let the user choose the PCA analysis method.
+
+    Returns:
+        'cylinder' or 'traditional'
+    """
+    print("\nPCA 방법을 선택하세요:")
+    print("  [1] cylinder    - 원기둥 형태 판별 기반")
+    print("  [2] traditional - 전통적 PCA (PC1 = 기준축)")
+    print()
+
+    while True:
+        try:
+            choice = int(input("선택 (1-2) [기본값: 1]: ") or "1")
+            if choice == 1:
+                print("Selected: cylinder PCA\n")
+                return "cylinder"
+            elif choice == 2:
+                print("Selected: traditional PCA\n")
+                return "traditional"
+        except (ValueError, EOFError):
+            pass
+        print("1 또는 2를 입력하세요.")
+
+
 # =============================================================================
 # GPU INITIALIZATION
 # =============================================================================
@@ -161,7 +186,7 @@ def load_only(ply_path: str) -> PointCloudGPU:
     return cloud
 
 
-def detect_pillars(cloud: PointCloudGPU, h_ranges: list, s_min: float, v_min: float) -> list[Dict[str, Any]]:
+def detect_pillars(cloud: PointCloudGPU, h_ranges: list, s_min: float, v_min: float, method: str = 'cylinder') -> list[Dict[str, Any]]:
     """Run color segmentation → clustering → PCA analysis."""
     # Color segmentation
     colored_points, colored_colors, colored_indices = segment_by_color(
@@ -203,7 +228,7 @@ def detect_pillars(cloud: PointCloudGPU, h_ranges: list, s_min: float, v_min: fl
         )
 
     # PCA pillar detection
-    detected_pillars = detect_pillars_with_pca(clusters, cluster_ids)
+    detected_pillars = detect_pillars_with_pca(clusters, cluster_ids, method=method)
     return detected_pillars
 
 
@@ -223,13 +248,19 @@ def calculate_pillar_metrics(detected_pillars: List[Dict[str, Any]]) -> list[dic
             projections = np.dot(pillar['inlier_points'] - center, axis_norm)
             height = float(np.max(projections) - np.min(projections))
 
-        metrics.append({
+        metric = {
             'center': center,
-            'radius': pillar['radius'],
             'height': height,
-            'confidence': pillar['confidence'],
             'num_inlier_points': len(pillar['inlier_points']),
-        })
+            'analysis_method': pillar.get('analysis_method', 'PCA'),
+        }
+        if 'radius' in pillar:
+            metric['radius'] = pillar['radius']
+        if 'confidence' in pillar:
+            metric['confidence'] = pillar['confidence']
+        if 'eigenvalue_ratios' in pillar:
+            metric['eigenvalue_ratios'] = pillar['eigenvalue_ratios']
+        metrics.append(metric)
     return metrics
 
 
@@ -253,10 +284,16 @@ def print_detection_summary(
         center = m['center']
         print(f"Pillar {i + 1}:")
         print(f"  Center: ({center[0]:.3f}, {center[1]:.3f}, {center[2]:.3f})")
-        print(f"  Radius: {m['radius']:.3f} m")
+        if 'radius' in m:
+            print(f"  Radius: {m['radius']:.3f} m")
         print(f"  Height: {m['height']:.3f} m")
-        print(f"  Confidence: {m['confidence']:.3f}")
+        if 'confidence' in m:
+            print(f"  Confidence: {m['confidence']:.3f}")
+        if 'eigenvalue_ratios' in m:
+            ev = m['eigenvalue_ratios']
+            print(f"  Eigenvalues: [{ev[0]:.3f}, {ev[1]:.3f}, {ev[2]:.3f}]")
         print(f"  Inlier points: {m['num_inlier_points']:,}")
+        print(f"  Method: {m['analysis_method']}")
         print()
 
 
@@ -303,6 +340,8 @@ def main() -> None:
         print(f"Intermediate saves: DISABLED")
     print()
 
+    pca_method = prompt_pca_method()
+
     overall_start_time = time.time()
 
     try:
@@ -325,7 +364,7 @@ def main() -> None:
             return
         h_ranges, s_min, v_min = hsv_result
 
-        detected_pillars = detect_pillars(cloud, h_ranges, s_min, v_min)
+        detected_pillars = detect_pillars(cloud, h_ranges, s_min, v_min, method=pca_method)
 
         if not detected_pillars:
             print("No pillars detected after PCA analysis. Exiting.")
