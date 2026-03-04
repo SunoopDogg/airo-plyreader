@@ -192,6 +192,9 @@ def load_only(ply_path: str) -> PointCloudGPU:
 
 def detect_pillars(cloud: PointCloudGPU, h_ranges: list, s_min: float, v_min: float, method: str = 'cylinder') -> list[Dict[str, Any]]:
     """Run color segmentation → clustering → PCA analysis."""
+    print("=" * 60)
+    print("[3/6] Color Filtering")
+    print("=" * 60)
     # Color segmentation
     colored_points, colored_colors, colored_indices = segment_by_color(
         cloud.points, cloud.colors, h_ranges, s_min, v_min
@@ -209,7 +212,9 @@ def detect_pillars(cloud: PointCloudGPU, h_ranges: list, s_min: float, v_min: fl
         print("No matched points found. Exiting.")
         return []
 
-    # Clustering
+    print("=" * 60)
+    print("[4/6] Clustering")
+    print("=" * 60)
     clusters, cluster_ids, cluster_indices = cluster_colored_points(
         colored_points, colored_indices
     )
@@ -231,7 +236,9 @@ def detect_pillars(cloud: PointCloudGPU, h_ranges: list, s_min: float, v_min: fl
             config.CLUSTERED_PLY_PATH, "clustering visualization",
         )
 
-    # PCA pillar detection
+    print("=" * 60)
+    print("[5/6] Pillar Detection")
+    print("=" * 60)
     detected_pillars = detect_pillars_with_pca(clusters, cluster_ids, method=method)
     return detected_pillars
 
