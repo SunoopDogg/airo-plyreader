@@ -7,9 +7,12 @@ Pipeline stages:
 5. PCA analysis → 6. Visualize
 """
 
+import json
+import os
 import time
 import numpy as np
 import cupy as cp
+from datetime import datetime
 from typing import List, Dict, Any
 from pathlib import Path
 
@@ -17,6 +20,7 @@ from . import config
 from .config import (
     PLY_DIR, DOWNSAMPLE_DIR, ENABLE_INTERMEDIATE_SAVES,
     GPU_DEVICE_ID, DOWNSAMPLING_ENABLED, DOWNSAMPLING_VOXEL_SIZE, ENABLE_VISUALIZATION,
+    PILLAR_JSON_FILENAME,
     create_run_output_dir,
 )
 from .core.gpu import PointCloudGPU
@@ -264,6 +268,49 @@ def calculate_pillar_metrics(detected_pillars: List[Dict[str, Any]]) -> list[dic
     return metrics
 
 
+def save_pillar_results_json(
+    detected_pillars: List[Dict[str, Any]],
+    metrics: list[dict],
+    source_file: str,
+) -> str:
+    """Save pillar detection results to JSON in the run output directory.
+
+    Args:
+        detected_pillars: Raw pillar dicts from detect_pillars_with_pca().
+        metrics: Metric dicts from calculate_pillar_metrics().
+        source_file: Original PLY filename.
+
+    Returns:
+        Path to the written JSON file.
+    """
+    pillars_json = []
+    for pillar, m in zip(detected_pillars, metrics):
+        entry = {
+            "cluster_id": int(pillar["cluster_id"]),
+            "center": pillar["center"].tolist(),
+            "axis": (pillar["axis"] / np.linalg.norm(pillar["axis"])).tolist(),
+            "height": m["height"],
+            "radius": m.get("radius"),
+            "confidence": m.get("confidence"),
+            "num_inlier_points": m["num_inlier_points"],
+        }
+        pillars_json.append(entry)
+
+    result = {
+        "version": "1.0",
+        "source_file": Path(source_file).name,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "pillars": pillars_json,
+    }
+
+    json_path = os.path.join(config._run_dir, PILLAR_JSON_FILENAME)
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2, ensure_ascii=False)
+
+    print(f"Pillar results saved to: {json_path}")
+    return json_path
+
+
 def print_detection_summary(
     detected_pillars: List[Dict[str, Any]],
     metrics: list[dict],
@@ -366,11 +413,16 @@ def main() -> None:
 
         detected_pillars = detect_pillars(cloud, h_ranges, s_min, v_min, method=pca_method)
 
+        # Calculate metrics and save JSON (even if empty)
+        metrics = calculate_pillar_metrics(detected_pillars)
+        save_pillar_results_json(detected_pillars, metrics, input_ply_path)
+
         if not detected_pillars:
-            print("No pillars detected after PCA analysis. Exiting.")
+            print("No pillars detected after PCA analysis.")
+            total_time = time.time() - overall_start_time
+            print(f"Total processing time: {total_time:.2f} seconds")
             return
 
-        metrics = calculate_pillar_metrics(detected_pillars)
         print_detection_summary(detected_pillars, metrics)
         visualize_results(detected_pillars, cloud)
 
