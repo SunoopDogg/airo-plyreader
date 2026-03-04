@@ -214,12 +214,104 @@ def show_viewer(ply_path: str, title: str, left: int, top: int) -> None:
         print(f"[Viewer] '{title}' error: {e}")
 
 
-def launch_all_viewers(targets: list[tuple[str, str]]) -> None:
+def show_overlay_viewer(
+    ply_path: str,
+    pillars_data: list[dict],
+    title: str,
+    left: int,
+    top: int,
+) -> None:
+    """Open a downsampled PLY with pillar axis overlay in an Open3D viewer.
+
+    Designed to run as a multiprocessing.Process target.
+    Builds LineSet inside the subprocess (Open3D geometries are not picklable).
+
+    Args:
+        ply_path: Path to the downsampled PLY file.
+        pillars_data: List of pillar dicts from JSON (each has center, axis, height).
+        title: Window title.
+        left: Window X position.
+        top: Window Y position.
     """
-    Launch Open3D viewer windows for given PLY files.
+    try:
+        import open3d as o3d
+
+        pcd = o3d.io.read_point_cloud(ply_path)
+        if pcd.is_empty():
+            print(f"[Viewer] '{title}': empty point cloud, skipping")
+            return
+
+        geometries = [pcd]
+
+        # Build cylinder meshes for pillar axes
+        if pillars_data:
+            for p in pillars_data:
+                center = np.array(p["center"])
+                axis = np.array(p["axis"])
+                height = p["height"]
+                axis_length = height * 3.0
+
+                # Normalize target axis
+                axis_norm = np.linalg.norm(axis)
+                if axis_norm < 1e-9:
+                    continue
+                target_axis = axis / axis_norm
+
+                # Create cylinder along Z-axis
+                cylinder = o3d.geometry.TriangleMesh.create_cylinder(
+                    radius=0.01, height=axis_length, resolution=20, split=4
+                )
+                cylinder.compute_vertex_normals()
+                cylinder.paint_uniform_color([0.0, 1.0, 1.0])
+
+                # Rotate from Z-axis to target axis
+                z_axis = np.array([0.0, 0.0, 1.0])
+                rot_axis = np.cross(z_axis, target_axis)
+                rot_axis_len = np.linalg.norm(rot_axis)
+                dot = np.clip(np.dot(z_axis, target_axis), -1.0, 1.0)
+
+                if rot_axis_len < 1e-6:
+                    if dot < 0:
+                        # Anti-parallel: rotate 180 degrees around X-axis
+                        R = o3d.geometry.get_rotation_matrix_from_axis_angle(
+                            np.array([np.pi, 0.0, 0.0])
+                        )
+                        cylinder.rotate(R, center=np.array([0.0, 0.0, 0.0]))
+                    # else: parallel to Z, no rotation needed
+                else:
+                    angle = np.arccos(dot)
+                    rot_axis_normalized = rot_axis / rot_axis_len
+                    R = o3d.geometry.get_rotation_matrix_from_axis_angle(
+                        rot_axis_normalized * angle
+                    )
+                    cylinder.rotate(R, center=np.array([0.0, 0.0, 0.0]))
+
+                # Translate to pillar center
+                cylinder.translate(center)
+                geometries.append(cylinder)
+
+        print(f"[Viewer] '{title}': {len(pcd.points):,} points, {len(pillars_data)} axes")
+        o3d.visualization.draw_geometries(
+            geometries,
+            window_name=title,
+            width=960,
+            height=540,
+            left=left,
+            top=top,
+        )
+    except Exception as e:
+        print(f"[Viewer] '{title}' error: {e}")
+
+
+def launch_all_viewers(
+    targets: list[tuple[str, str]],
+    overlay: tuple[str, str, list[dict]] | None = None,
+) -> None:
+    """Launch Open3D viewer windows for given PLY files.
 
     Args:
         targets: List of (title, ply_path) tuples to display.
+        overlay: Optional (title, ply_path, pillars_data) for axis overlay viewer.
     """
     import os
     import multiprocessing
@@ -231,7 +323,7 @@ def launch_all_viewers(targets: list[tuple[str, str]]) -> None:
     # Filter to existing files only
     targets = [(t, p) for t, p in targets if os.path.isfile(p)]
 
-    if not targets:
+    if not targets and overlay is None:
         print("No result files found for visualization")
         return
 
@@ -240,10 +332,27 @@ def launch_all_viewers(targets: list[tuple[str, str]]) -> None:
 
     ctx = multiprocessing.get_context("spawn")
     processes = []
+
     for i, (title, path) in enumerate(targets):
         left, top = positions[i % len(positions)]
         p = ctx.Process(target=show_viewer, args=(path, title, left, top))
         processes.append(p)
+
+    # Add overlay viewer if provided
+    if overlay is not None:
+        ov_title, ov_path, pillars_data = overlay
+        if os.path.isfile(ov_path):
+            idx = len(targets)
+            left, top = positions[idx % len(positions)]
+            p = ctx.Process(
+                target=show_overlay_viewer,
+                args=(ov_path, pillars_data, ov_title, left, top),
+            )
+            processes.append(p)
+
+    if not processes:
+        print("No result files found for visualization")
+        return
 
     for p in processes:
         p.start()
