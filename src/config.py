@@ -19,6 +19,7 @@ from datetime import datetime
 PLY_DIR = "ply"
 DOWNSAMPLE_DIR = "ply/downsample"
 OUTPUT_DIR = "output"
+PILLAR_JSON_FILENAME = "pillar_results.json"
 
 # Runtime paths — set by create_run_output_dir()
 _run_dir = None
@@ -107,7 +108,7 @@ COLOR_PARAMS = {
 
 # DBSCAN Clustering Parameters (TIGHTER for more precise clusters)
 # Maximum distance between points in cluster (meters)
-DBSCAN_EPS = 0.3
+DBSCAN_EPS = 0.02
 DBSCAN_MIN_SAMPLES = 50                    # Minimum points to form a cluster
 
 # =============================================================================
