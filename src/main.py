@@ -374,24 +374,14 @@ def main() -> None:
     run_dir = create_run_output_dir(input_ply_path)
     print(f"Output directory: {run_dir}")
 
-    print("Pillar Detection Pipeline")
-    print("=" * 60)
-    print(f"Input file: {input_ply_path}")
-    print(f"Output file: {config.OUTPUT_PLY_PATH}")
-
-    if ENABLE_INTERMEDIATE_SAVES:
-        print(f"Intermediate saves: ENABLED")
-        print(f"  Filtered points: {config.get_colored_points_path()}")
-        print(f"  Clustering results: {config.CLUSTERED_PLY_PATH}")
-    else:
-        print(f"Intermediate saves: DISABLED")
-    print()
-
     pca_method = prompt_pca_method()
 
     overall_start_time = time.time()
 
     try:
+        print("=" * 60)
+        print("[1/6] Loading Point Cloud")
+        print("=" * 60)
         init_gpu()
 
         if is_downsampled:
@@ -399,7 +389,9 @@ def main() -> None:
         else:
             cloud = load_and_downsample(input_ply_path)
 
-        # ROI selection
+        print("=" * 60)
+        print("[2/6] ROI Selection")
+        print("=" * 60)
         roi = select_roi_gui(cloud)
         if roi is not None:
             cloud = crop_to_roi(cloud, roi)
@@ -423,6 +415,9 @@ def main() -> None:
             print(f"Total processing time: {total_time:.2f} seconds")
             return
 
+        print("=" * 60)
+        print("[6/6] Output")
+        print("=" * 60)
         print_detection_summary(detected_pillars, metrics)
         visualize_results(detected_pillars, cloud)
 
