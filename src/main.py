@@ -113,14 +113,14 @@ def prompt_pca_method() -> str:
     Returns:
         'cylinder' or 'traditional'
     """
-    print("\nPCA 방법을 선택하세요:")
-    print("  [1] cylinder    - 원기둥 형태 판별 기반")
-    print("  [2] traditional - 전통적 PCA (PC1 = 기준축)")
+    print("\nSelect PCA method:")
+    print("  [1] cylinder    - Cylindrical shape detection")
+    print("  [2] traditional - Traditional PCA (PC1 = reference axis)")
     print()
 
     while True:
         try:
-            choice = int(input("선택 (1-2) [기본값: 1]: ") or "1")
+            choice = int(input("Select (1-2) [default: 1]: ") or "1")
             if choice == 1:
                 print("Selected: cylinder PCA\n")
                 return "cylinder"
@@ -129,7 +129,7 @@ def prompt_pca_method() -> str:
                 return "traditional"
         except (ValueError, EOFError):
             pass
-        print("1 또는 2를 입력하세요.")
+        print("Please enter 1 or 2.")
 
 
 # =============================================================================
