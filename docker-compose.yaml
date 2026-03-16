@@ -2,16 +2,17 @@ services:
   airo-plyreader:
     build:
       context: .
-    image: node22.19.0-python3.13.7:trixie-slim-uv
+    image: trixie-slim:uv-nvm
     container_name: airo-plyreader
-    tty: true
-    ipc: host
     environment:
       - DISPLAY=${DISPLAY:-host.docker.internal:0}
       - QT_X11_NO_MITSHM=1
     volumes:
       - .:/root/airo-plyreader
       - /tmp/.X11-unix:/tmp/.X11-unix
+    network_mode: host
+    ipc: host
+    tty: true
 
   airo-plyreader-gpu:
     extends:
