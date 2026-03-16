@@ -12,22 +12,29 @@ parameters.
 # =============================================================================
 
 # Input/Output Configuration
-INPUT_PLY_PATH = "ply/object_blue.ply"
-OUTPUT_PLY_PATH = "output/output_pillars.ply"
+PLY_DIR = "ply"
+OUTPUT_DIR = "output"
+OUTPUT_PLY_PATH = f"{OUTPUT_DIR}/output_pillars.ply"
 
 # Intermediate Results Configuration
 # Enable/disable saving intermediate results
 ENABLE_INTERMEDIATE_SAVES = True
 # Path for downsampled point cloud
-DOWNSAMPLED_PLY_PATH = "output/downsampled_points.ply"
+DOWNSAMPLED_PLY_PATH = f"{OUTPUT_DIR}/downsampled_points.ply"
 # Path for clustering visualization
-CLUSTERED_PLY_PATH = "output/clustered_points.ply"
+CLUSTERED_PLY_PATH = f"{OUTPUT_DIR}/clustered_points.ply"
 # Path for colored points only (filtered color regions) - dynamically named based on mode
 
 
 def get_colored_points_path():
-    return f"output/{COLOR_DETECTION_MODE.lower()}_points_only.ply"
+    return f"{OUTPUT_DIR}/{COLOR_DETECTION_MODE.lower()}_points_only.ply"
 
+
+# =============================================================================
+# GPU CONFIGURATION
+# =============================================================================
+GPU_DEVICE_ID = 0                      # GPU device to use
+GPU_CHUNK_SIZE = 20_000_000            # Max points per GPU processing chunk
 
 # =============================================================================
 # COLOR DETECTION MODE AND PARAMETERS
@@ -83,22 +90,17 @@ RED_COLOR = (255, 0, 0)                   # Red color for detected pillars
 # Points per unit length for cylinder sampling
 CYLINDER_SAMPLE_DENSITY = 50
 
+# Interactive Open3D viewer after pipeline completion
+ENABLE_VISUALIZATION = True
+
 # =============================================================================
 # DOWNSAMPLING PARAMETERS
 # =============================================================================
 
-# Downsampling Parameters (Open3D Native Implementation)
+# Downsampling Parameters (GPU Voxel Grid)
 DOWNSAMPLING_ENABLED = True                # Enable/disable downsampling step
-# 'voxel', 'random', 'uniform', 'farthest_point'
-DOWNSAMPLING_METHOD = 'voxel'
 # Voxel size for voxel grid method (meters)
 DOWNSAMPLING_VOXEL_SIZE = 0.01
-# Target ratio for random sampling (0.1 = 10%)
-DOWNSAMPLING_TARGET_RATIO = 0.1
-# Keep every k-th point for uniform method
-DOWNSAMPLING_UNIFORM_K = 10
-# Number of points to keep for farthest point method
-DOWNSAMPLING_FARTHEST_POINTS = 100000
 
 # =============================================================================
 # PCA ANALYSIS PARAMETERS
