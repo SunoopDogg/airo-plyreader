@@ -19,6 +19,6 @@ Modules:
 # Import main components for easy access
 from .main import main, print_detection_summary
 from .config import *
-from .ply_io import load_ply_file_open3d, save_ply_file_open3d
-from .clustering import cluster_red_points
-from .visualization import create_visualization_output
+from .file_io.ply_io import load_ply_file_open3d, save_ply_file_open3d
+from .analysis.clustering import cluster_colored_points
+from .visualization.visualization import create_visualization_output

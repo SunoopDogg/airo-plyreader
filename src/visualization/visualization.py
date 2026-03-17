@@ -9,7 +9,7 @@ visualization preparation.
 import numpy as np
 import time
 from typing import List, Tuple, Dict, Any
-from config import GRAY_COLOR, RED_COLOR
+from ..config import GRAY_COLOR, RED_COLOR
 
 
 def generate_pca_axes_points(pillar: Dict[str, Any], axis_length_factor: float = 3.0) -> Tuple[np.ndarray, np.ndarray]:
@@ -201,3 +201,81 @@ def create_clustering_visualization(
         f"  Colored {total_cluster_points:,} cluster points across {len(clusters)} clusters")
 
     return viz_points, viz_colors
+
+
+def show_viewer(ply_path: str, title: str, left: int, top: int) -> None:
+    """
+    Open a PLY file in an Open3D interactive viewer window.
+
+    Designed to run as a multiprocessing.Process target.
+    Imports Open3D inside the function to avoid inheriting CUDA context.
+    """
+    try:
+        import open3d as o3d
+        pcd = o3d.io.read_point_cloud(ply_path)
+        if pcd.is_empty():
+            print(f"[Viewer] '{title}': empty point cloud, skipping")
+            return
+        print(f"[Viewer] '{title}': {len(pcd.points):,} points")
+        o3d.visualization.draw_geometries(
+            [pcd],
+            window_name=title,
+            width=960,
+            height=540,
+            left=left,
+            top=top,
+        )
+    except Exception as e:
+        print(f"[Viewer] '{title}' error: {e}")
+
+
+def launch_all_viewers() -> None:
+    """
+    Launch Open3D viewer windows for all existing pipeline result PLY files.
+
+    Spawns one process per file using spawn context (CUDA fork safety).
+    Windows are tiled in a 2x2 grid.
+    """
+    import os
+    import multiprocessing
+
+    if not os.environ.get("DISPLAY"):
+        print("Warning: DISPLAY not set, skipping visualization viewers")
+        return
+
+    from .. import config
+
+    # Collect (title, path) pairs in display order
+    targets = []
+    if config.DOWNSAMPLING_ENABLED:
+        targets.append(("Downsampled", config.DOWNSAMPLED_PLY_PATH))
+    if config.ENABLE_INTERMEDIATE_SAVES:
+        color = config.COLOR_DETECTION_MODE.title()
+        targets.append((f"{color} Points", config.get_colored_points_path()))
+        targets.append(("Clusters", config.CLUSTERED_PLY_PATH))
+    targets.append(("Pillars (Final)", config.OUTPUT_PLY_PATH))
+
+    # Filter to existing files only
+    targets = [(t, p) for t, p in targets if os.path.isfile(p)]
+
+    if not targets:
+        print("No result files found for visualization")
+        return
+
+    # 2x2 tiled positions
+    positions = [(0, 0), (960, 0), (0, 540), (960, 540)]
+
+    ctx = multiprocessing.get_context("spawn")
+    processes = []
+    for i, (title, path) in enumerate(targets):
+        left, top = positions[i % len(positions)]
+        p = ctx.Process(target=show_viewer, args=(path, title, left, top))
+        processes.append(p)
+
+    for p in processes:
+        p.start()
+
+    print(f"Launched {len(processes)} viewer(s). Close all windows to continue...")
+
+    for p in processes:
+        p.join()
