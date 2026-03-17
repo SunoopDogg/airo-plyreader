@@ -34,7 +34,7 @@ def generate_pca_axes_points(pillar: Dict[str, Any], axis_length_factor: float =
         height = np.max(projections) - np.min(projections)
         axis_length = height * axis_length_factor
     else:
-        axis_length = pillar['radius'] * 10  # Fallback
+        axis_length = 1.0  # Fixed fallback when inlier_points is empty
 
     # Generate only the main axis (cylinder direction)
     primary_axis = axis / np.linalg.norm(axis)
@@ -75,12 +75,7 @@ def create_visualization_output(points: np.ndarray, colors: np.ndarray,
     all_axes_colors = []
 
     # Find the pillar with the most points
-    largest_pillar = None
-    max_points = 0
-    for pillar in detected_pillars:
-        if len(pillar['inlier_points']) > max_points:
-            max_points = len(pillar['inlier_points'])
-            largest_pillar = pillar
+    largest_pillar = max(detected_pillars, key=lambda p: len(p['inlier_points']), default=None)
 
     for pillar in detected_pillars:
         if len(pillar['inlier_points']) > 0:
@@ -115,8 +110,6 @@ def create_visualization_output(points: np.ndarray, colors: np.ndarray,
             print(
                 f"Added cylinder axes for {len(detected_pillars)} pillars ({len(combined_axes_points):,} axis points)")
 
-        # Note: Cylinder surface visualization removed - showing axes only
-
     viz_time = time.time() - start_time
     print(
         f"Created visualization with {len(output_points):,} points in {viz_time:.2f} seconds")
@@ -148,8 +141,8 @@ def create_clustering_visualization(
 
     # Start with gray background for all original points
     viz_points = original_points.copy()
-    viz_colors = np.full_like(original_colors, 128,
-                              dtype=np.uint8)  # Gray background
+    viz_colors = np.full_like(original_colors, GRAY_COLOR,
+                              dtype=np.uint8)
 
     # Generate distinctive colors for each cluster
     cluster_colors = [
@@ -182,18 +175,10 @@ def create_clustering_visualization(
             indices = cluster_indices[i]
             viz_colors[indices] = cluster_color
         else:
-            # Fallback to distance-based matching (SLOW path - backward compatibility)
-            print(
-                f"  Warning: Using slow distance-based matching for cluster {cluster_id}")
-            tolerance = 1e-6
-            for cluster_point in cluster_points:
-                # Find closest point in original cloud
-                distances = np.linalg.norm(
-                    original_points - cluster_point, axis=1)
-                closest_idx = np.argmin(distances)
-                # If the distance is very small, it's a match
-                if distances[closest_idx] < tolerance:
-                    viz_colors[closest_idx] = cluster_color
+            raise ValueError(
+                f"cluster_indices required for cluster {cluster_id}. "
+                "Distance-based fallback has been removed."
+            )
 
         total_cluster_points += len(cluster_points)
 
@@ -229,12 +214,104 @@ def show_viewer(ply_path: str, title: str, left: int, top: int) -> None:
         print(f"[Viewer] '{title}' error: {e}")
 
 
-def launch_all_viewers() -> None:
-    """
-    Launch Open3D viewer windows for all existing pipeline result PLY files.
+def show_overlay_viewer(
+    ply_path: str,
+    pillars_data: list[dict],
+    title: str,
+    left: int,
+    top: int,
+) -> None:
+    """Open a downsampled PLY with pillar axis overlay in an Open3D viewer.
 
-    Spawns one process per file using spawn context (CUDA fork safety).
-    Windows are tiled in a 2x2 grid.
+    Designed to run as a multiprocessing.Process target.
+    Builds LineSet inside the subprocess (Open3D geometries are not picklable).
+
+    Args:
+        ply_path: Path to the downsampled PLY file.
+        pillars_data: List of pillar dicts from JSON (each has center, axis, height).
+        title: Window title.
+        left: Window X position.
+        top: Window Y position.
+    """
+    try:
+        import open3d as o3d
+
+        pcd = o3d.io.read_point_cloud(ply_path)
+        if pcd.is_empty():
+            print(f"[Viewer] '{title}': empty point cloud, skipping")
+            return
+
+        geometries = [pcd]
+
+        # Build cylinder meshes for pillar axes
+        if pillars_data:
+            for p in pillars_data:
+                center = np.array(p["center"])
+                axis = np.array(p["axis"])
+                height = p["height"]
+                axis_length = height * 3.0
+
+                # Normalize target axis
+                axis_norm = np.linalg.norm(axis)
+                if axis_norm < 1e-9:
+                    continue
+                target_axis = axis / axis_norm
+
+                # Create cylinder along Z-axis
+                cylinder = o3d.geometry.TriangleMesh.create_cylinder(
+                    radius=0.01, height=axis_length, resolution=20, split=4
+                )
+                cylinder.compute_vertex_normals()
+                cylinder.paint_uniform_color([0.0, 1.0, 1.0])
+
+                # Rotate from Z-axis to target axis
+                z_axis = np.array([0.0, 0.0, 1.0])
+                rot_axis = np.cross(z_axis, target_axis)
+                rot_axis_len = np.linalg.norm(rot_axis)
+                dot = np.clip(np.dot(z_axis, target_axis), -1.0, 1.0)
+
+                if rot_axis_len < 1e-6:
+                    if dot < 0:
+                        # Anti-parallel: rotate 180 degrees around X-axis
+                        R = o3d.geometry.get_rotation_matrix_from_axis_angle(
+                            np.array([np.pi, 0.0, 0.0])
+                        )
+                        cylinder.rotate(R, center=np.array([0.0, 0.0, 0.0]))
+                    # else: parallel to Z, no rotation needed
+                else:
+                    angle = np.arccos(dot)
+                    rot_axis_normalized = rot_axis / rot_axis_len
+                    R = o3d.geometry.get_rotation_matrix_from_axis_angle(
+                        rot_axis_normalized * angle
+                    )
+                    cylinder.rotate(R, center=np.array([0.0, 0.0, 0.0]))
+
+                # Translate to pillar center
+                cylinder.translate(center)
+                geometries.append(cylinder)
+
+        print(f"[Viewer] '{title}': {len(pcd.points):,} points, {len(pillars_data)} axes")
+        o3d.visualization.draw_geometries(
+            geometries,
+            window_name=title,
+            width=960,
+            height=540,
+            left=left,
+            top=top,
+        )
+    except Exception as e:
+        print(f"[Viewer] '{title}' error: {e}")
+
+
+def launch_all_viewers(
+    targets: list[tuple[str, str]],
+    overlay: tuple[str, str, list[dict]] | None = None,
+) -> None:
+    """Launch Open3D viewer windows for given PLY files.
+
+    Args:
+        targets: List of (title, ply_path) tuples to display.
+        overlay: Optional (title, ply_path, pillars_data) for axis overlay viewer.
     """
     import os
     import multiprocessing
@@ -243,22 +320,10 @@ def launch_all_viewers() -> None:
         print("Warning: DISPLAY not set, skipping visualization viewers")
         return
 
-    from .. import config
-
-    # Collect (title, path) pairs in display order
-    targets = []
-    if config.DOWNSAMPLING_ENABLED:
-        targets.append(("Downsampled", config.DOWNSAMPLED_PLY_PATH))
-    if config.ENABLE_INTERMEDIATE_SAVES:
-        color = config.COLOR_DETECTION_MODE.title()
-        targets.append((f"{color} Points", config.get_colored_points_path()))
-        targets.append(("Clusters", config.CLUSTERED_PLY_PATH))
-    targets.append(("Pillars (Final)", config.OUTPUT_PLY_PATH))
-
     # Filter to existing files only
     targets = [(t, p) for t, p in targets if os.path.isfile(p)]
 
-    if not targets:
+    if not targets and overlay is None:
         print("No result files found for visualization")
         return
 
@@ -267,10 +332,27 @@ def launch_all_viewers() -> None:
 
     ctx = multiprocessing.get_context("spawn")
     processes = []
+
     for i, (title, path) in enumerate(targets):
         left, top = positions[i % len(positions)]
         p = ctx.Process(target=show_viewer, args=(path, title, left, top))
         processes.append(p)
+
+    # Add overlay viewer if provided
+    if overlay is not None:
+        ov_title, ov_path, pillars_data = overlay
+        if os.path.isfile(ov_path):
+            idx = len(targets)
+            left, top = positions[idx % len(positions)]
+            p = ctx.Process(
+                target=show_overlay_viewer,
+                args=(ov_path, pillars_data, ov_title, left, top),
+            )
+            processes.append(p)
+
+    if not processes:
+        print("No result files found for visualization")
+        return
 
     for p in processes:
         p.start()

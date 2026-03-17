@@ -7,13 +7,7 @@ HSV convention: H: 0-360, S: 0-1, V: 0-1 (matches config values directly).
 
 import cupy as cp
 import time
-from ..config import (
-    COLOR_DETECTION_MODE,
-    GPU_CHUNK_SIZE,
-    HSV_RED_H_RANGES, HSV_RED_S_MIN, HSV_RED_V_MIN,
-    HSV_BLUE_H_RANGES, HSV_BLUE_S_MIN, HSV_BLUE_V_MIN,
-    HSV_GREEN_H_RANGES, HSV_GREEN_S_MIN, HSV_GREEN_V_MIN,
-)
+from ..config import GPU_CHUNK_SIZE
 
 
 def rgb_to_hsv_gpu(rgb_colors: cp.ndarray) -> tuple[cp.ndarray, cp.ndarray, cp.ndarray]:
@@ -124,9 +118,12 @@ def _filter_chunk(
     return filtered_points, filtered_colors, global_indices, hsv_stats
 
 
-def filter_colored_points_hsv(
+def segment_by_color(
     points: cp.ndarray,
     colors: cp.ndarray,
+    h_ranges: list[tuple[float, float]],
+    s_min: float,
+    v_min: float,
 ):
     """
     Filter points by HSV color criteria on GPU. Uses chunked processing
@@ -135,30 +132,17 @@ def filter_colored_points_hsv(
     Args:
         points: CuPy array of shape (N, 3), float32
         colors: CuPy array of shape (N, 3), uint8
+        h_ranges: List of (h_min, h_max) hue range tuples
+        s_min: Minimum saturation threshold
+        v_min: Minimum value/brightness threshold
 
     Returns:
         Tuple of (colored_points, colored_colors, colored_indices)
         All returned arrays are CuPy arrays.
     """
-    color_name = COLOR_DETECTION_MODE.lower()
-    print(f"Filtering {color_name} points using HSV color space (GPU)...")
+    h_str = ", ".join(f"{lo:.0f}-{hi:.0f}" for lo, hi in h_ranges)
+    print(f"Filtering points by HSV (H[{h_str}], S>={s_min:.2f}, V>={v_min:.2f}) on GPU...")
     start_time = time.time()
-
-    # Get color parameters based on mode
-    if color_name == 'red':
-        h_ranges = HSV_RED_H_RANGES
-        s_min = HSV_RED_S_MIN
-        v_min = HSV_RED_V_MIN
-    elif color_name == 'blue':
-        h_ranges = HSV_BLUE_H_RANGES
-        s_min = HSV_BLUE_S_MIN
-        v_min = HSV_BLUE_V_MIN
-    elif color_name == 'green':
-        h_ranges = HSV_GREEN_H_RANGES
-        s_min = HSV_GREEN_S_MIN
-        v_min = HSV_GREEN_V_MIN
-    else:
-        raise ValueError(f"Unsupported color detection mode: {COLOR_DETECTION_MODE}")
 
     n_points = len(points)
 
@@ -175,9 +159,7 @@ def filter_colored_points_hsv(
         chunk_points = []
         chunk_colors = []
         chunk_indices = []
-        # Track global HSV stats across chunks
-        global_h_min, global_s_min_val, global_v_min_val = float('inf'), float('inf'), float('inf')
-        global_h_max, global_s_max, global_v_max = float('-inf'), float('-inf'), float('-inf')
+        chunk_stats = []
 
         for i in range(n_chunks):
             start = i * GPU_CHUNK_SIZE
@@ -194,12 +176,7 @@ def filter_colored_points_hsv(
                 chunk_indices.append(fi)
 
             if stats is not None:
-                global_h_min = min(global_h_min, stats['h_min'])
-                global_h_max = max(global_h_max, stats['h_max'])
-                global_s_min_val = min(global_s_min_val, stats['s_min'])
-                global_s_max = max(global_s_max, stats['s_max'])
-                global_v_min_val = min(global_v_min_val, stats['v_min'])
-                global_v_max = max(global_v_max, stats['v_max'])
+                chunk_stats.append(stats)
 
         cp.get_default_memory_pool().free_all_blocks()
 
@@ -208,9 +185,12 @@ def filter_colored_points_hsv(
             filtered_colors = cp.concatenate(chunk_colors, axis=0)
             filtered_indices = cp.concatenate(chunk_indices, axis=0)
             hsv_stats = {
-                'h_min': global_h_min, 'h_max': global_h_max,
-                's_min': global_s_min_val, 's_max': global_s_max,
-                'v_min': global_v_min_val, 'v_max': global_v_max,
+                'h_min': min(s['h_min'] for s in chunk_stats),
+                'h_max': max(s['h_max'] for s in chunk_stats),
+                's_min': min(s['s_min'] for s in chunk_stats),
+                's_max': max(s['s_max'] for s in chunk_stats),
+                'v_min': min(s['v_min'] for s in chunk_stats),
+                'v_max': max(s['v_max'] for s in chunk_stats),
             }
         else:
             filtered_points = cp.empty((0, 3), dtype=cp.float32)
@@ -224,13 +204,13 @@ def filter_colored_points_hsv(
     filter_time = time.time() - start_time
     n_colored = len(filtered_points)
     print(
-        f"Found {n_colored:,} {color_name} points "
+        f"Found {n_colored:,} matched points "
         f"({n_colored / n_points * 100:.2f}%) in {filter_time:.2f} seconds"
     )
 
     if hsv_stats is not None:
         print(
-            f"  {color_name.title()} points HSV ranges: "
+            f"  Matched points HSV ranges: "
             f"H[{hsv_stats['h_min']:.1f}-{hsv_stats['h_max']:.1f}], "
             f"S[{hsv_stats['s_min']:.3f}-{hsv_stats['s_max']:.3f}], "
             f"V[{hsv_stats['v_min']:.3f}-{hsv_stats['v_max']:.3f}]"

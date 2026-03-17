@@ -29,6 +29,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "cuml-cu12" },
     { name = "cupy-cuda12x" },
+    { name = "matplotlib" },
     { name = "numpy" },
     { name = "open3d" },
 ]
@@ -37,6 +38,7 @@ dependencies = [
 requires-dist = [
     { name = "cuml-cu12", specifier = ">=25.2" },
     { name = "cupy-cuda12x", specifier = ">=13.0.0" },
+    { name = "matplotlib", specifier = ">=3.7.0" },
     { name = "numpy", specifier = ">=1.24.4" },
     { name = "open3d", specifier = ">=0.19.0" },
 ]

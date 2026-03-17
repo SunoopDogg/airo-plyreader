@@ -14,12 +14,11 @@ import cupy as cp
 import cupyx
 
 from ..config import (
-    DOWNSAMPLING_ENABLED,
     DOWNSAMPLING_VOXEL_SIZE,
     GPU_CHUNK_SIZE,
 )
 
-def _voxel_average_chunk(
+def _average_voxel_chunk(
     points: cp.ndarray,
     colors: cp.ndarray,
     voxel_size: float,
@@ -124,7 +123,7 @@ def downsample_voxel_grid_gpu(
 
     # Small enough to process in one pass
     if n_points <= GPU_CHUNK_SIZE:
-        return _voxel_average_chunk(points, colors, voxel_size)
+        return _average_voxel_chunk(points, colors, voxel_size)
 
     # Chunked processing for large point clouds
     n_chunks = (n_points + GPU_CHUNK_SIZE - 1) // GPU_CHUNK_SIZE
@@ -138,7 +137,7 @@ def downsample_voxel_grid_gpu(
         end = min(start + GPU_CHUNK_SIZE, n_points)
         print(f"    Chunk {i + 1}/{n_chunks}: points {start:,}-{end:,}")
 
-        chunk_pts, chunk_cols = _voxel_average_chunk(
+        chunk_pts, chunk_cols = _average_voxel_chunk(
             points[start:end], colors[start:end], voxel_size
         )
         chunk_results_points.append(chunk_pts)
@@ -156,14 +155,14 @@ def downsample_voxel_grid_gpu(
     print(f"    Merged chunks: {len(merged_points):,} intermediate points")
 
     # Final merge pass: re-run voxel average to combine duplicates across chunks
-    final_points, final_colors = _voxel_average_chunk(
+    final_points, final_colors = _average_voxel_chunk(
         merged_points, merged_colors, voxel_size
     )
 
     return final_points, final_colors
 
 
-def downsample_points(
+def downsample_gpu(
     points: cp.ndarray,
     colors: cp.ndarray,
 ) -> tuple[cp.ndarray, cp.ndarray]:
@@ -177,10 +176,6 @@ def downsample_points(
     Returns:
         Tuple of (processed_points, processed_colors) as CuPy arrays
     """
-    if not DOWNSAMPLING_ENABLED:
-        print("  Downsampling: DISABLED - using original point cloud")
-        return points, colors
-
     print(f"  Downsampling: ENABLED - Method: voxel (GPU)")
     print(f"    Original points: {len(points):,}")
 
