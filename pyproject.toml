@@ -9,6 +9,7 @@ dependencies = [
     "numpy>=1.24.4",
     "cupy-cuda12x>=13.0.0",
     "cuml-cu12>=25.02",
+    "matplotlib>=3.7.0",
 ]
 
 [[tool.uv.index]]

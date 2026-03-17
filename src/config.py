@@ -7,27 +7,57 @@ parameters, clustering settings, geometric constraints, and visualization
 parameters.
 """
 
+import os
+import re
+from datetime import datetime
+
 # =============================================================================
 # INPUT/OUTPUT CONFIGURATION
 # =============================================================================
 
 # Input/Output Configuration
 PLY_DIR = "ply"
+DOWNSAMPLE_DIR = "ply/downsample"
 OUTPUT_DIR = "output"
-OUTPUT_PLY_PATH = f"{OUTPUT_DIR}/output_pillars.ply"
+PILLAR_JSON_FILENAME = "pillar_results.json"
+
+# Runtime paths — set by create_run_output_dir()
+_run_dir = None
+OUTPUT_PLY_PATH = None
+CLUSTERED_PLY_PATH = None
 
 # Intermediate Results Configuration
-# Enable/disable saving intermediate results
 ENABLE_INTERMEDIATE_SAVES = True
-# Path for downsampled point cloud
-DOWNSAMPLED_PLY_PATH = f"{OUTPUT_DIR}/downsampled_points.ply"
-# Path for clustering visualization
-CLUSTERED_PLY_PATH = f"{OUTPUT_DIR}/clustered_points.ply"
-# Path for colored points only (filtered color regions) - dynamically named based on mode
 
 
-def get_colored_points_path():
-    return f"{OUTPUT_DIR}/{COLOR_DETECTION_MODE.lower()}_points_only.ply"
+def create_run_output_dir(ply_path: str) -> str:
+    """Create a timestamped output directory for this pipeline run.
+
+    Args:
+        ply_path: Full path to the selected PLY file.
+
+    Returns:
+        The created directory path.
+    """
+    global _run_dir, OUTPUT_PLY_PATH, CLUSTERED_PLY_PATH
+
+    # Extract and sanitize filename
+    ply_name = os.path.splitext(os.path.basename(ply_path))[0]
+    ply_name = ply_name.replace(" ", "_")
+    ply_name = re.sub(r"[^a-zA-Z0-9_.\-]", "", ply_name)
+
+    # Generate compact timestamp
+    timestamp = datetime.now().strftime("%y%m%d%H%M%S")
+
+    # Create directory
+    _run_dir = os.path.join(OUTPUT_DIR, f"{ply_name}-{timestamp}")
+    os.makedirs(_run_dir, exist_ok=True)
+
+    # Set output paths
+    OUTPUT_PLY_PATH = os.path.join(_run_dir, "output_pillars.ply")
+    CLUSTERED_PLY_PATH = os.path.join(_run_dir, "clustered_points.ply")
+
+    return _run_dir
 
 
 # =============================================================================
@@ -40,24 +70,37 @@ GPU_CHUNK_SIZE = 20_000_000            # Max points per GPU processing chunk
 # COLOR DETECTION MODE AND PARAMETERS
 # =============================================================================
 # Color Detection Mode: 'red', 'blue', 'green'
-COLOR_DETECTION_MODE = 'blue'
+COLOR_DETECTION_MODE = None
 
-# HSV Color Segmentation Parameters for different colors
-# Red color ranges
-HSV_RED_H_RANGES = [(0, 10), (350, 360)]  # Hue ranges for red color
-HSV_RED_S_MIN = 0.55                      # Minimum saturation (0-1)
-HSV_RED_V_MIN = 0.45                      # Minimum value/brightness (0-1)
 
-# Blue color ranges (expanded for better detection)
-HSV_BLUE_H_RANGES = [(220, 250)]          # Expanded hue range for blue color
-HSV_BLUE_S_MIN = 0.80                     # Reduced minimum saturation (0-1)
-# Reduced minimum value/brightness (0-1)
-HSV_BLUE_V_MIN = 0.25
+def set_color_mode(mode: str) -> None:
+    """Set the color detection mode at runtime.
 
-# Green color ranges
-HSV_GREEN_H_RANGES = [(80, 160)]          # Hue range for green color
-HSV_GREEN_S_MIN = 0.40                    # Minimum saturation (0-1)
-HSV_GREEN_V_MIN = 0.35                    # Minimum value/brightness (0-1)
+    Args:
+        mode: Color name (must be a key in COLOR_PARAMS).
+    """
+    global COLOR_DETECTION_MODE
+    mode = mode.lower()
+    if mode not in COLOR_PARAMS:
+        raise ValueError(
+            f"Unknown color mode '{mode}'. "
+            f"Available: {', '.join(COLOR_PARAMS.keys())}"
+        )
+    COLOR_DETECTION_MODE = mode
+
+
+def get_colored_points_path():
+    return os.path.join(_run_dir, "filtered_points_only.ply")
+
+
+# HSV Color Segmentation Parameters
+# H: 0-360 degrees (pipeline uses custom GPU RGB→HSV, not OpenCV's 0-180 range)
+# S: 0-1, V: 0-1
+COLOR_PARAMS = {
+    'red':   {'h_ranges': [(0, 10), (350, 360)], 's_min': 0.55, 'v_min': 0.45},
+    'blue':  {'h_ranges': [(220, 250)],           's_min': 0.80, 'v_min': 0.25},
+    'green': {'h_ranges': [(80, 160)],             's_min': 0.40, 'v_min': 0.35},
+}
 
 # =============================================================================
 # DBSCAN CLUSTERING PARAMETERS
@@ -65,20 +108,25 @@ HSV_GREEN_V_MIN = 0.35                    # Minimum value/brightness (0-1)
 
 # DBSCAN Clustering Parameters (TIGHTER for more precise clusters)
 # Maximum distance between points in cluster (meters)
-DBSCAN_EPS = 0.3
+DBSCAN_EPS = 0.02
 DBSCAN_MIN_SAMPLES = 50                    # Minimum points to form a cluster
 
 # =============================================================================
 # CYLINDER GEOMETRIC CONSTRAINTS
 # =============================================================================
 
-# Cylinder Geometric Constraints (RELAXED for more pillar types)
-# Relaxed minimum pillar radius (meters)
+# Cylinder Geometric Constraints (tightened to match real-world pillar dimensions)
+# Minimum pillar radius (meters)
 PILLAR_RADIUS_MIN = 0.01
-# Relaxed maximum pillar radius (meters)
-PILLAR_RADIUS_MAX = 100.0
-# Relaxed minimum pillar height (meters)
+# Maximum pillar radius (meters)
+PILLAR_RADIUS_MAX = 0.30
+# Minimum pillar height (meters)
 PILLAR_HEIGHT_MIN = 0.1
+# Maximum pillar height (meters)
+PILLAR_HEIGHT_MAX = 2.0
+# Maximum allowed angle between pillar axis and Z-axis (degrees)
+# Set to None to disable angle constraint
+PILLAR_AXIS_MAX_ANGLE_DEG = None
 
 # =============================================================================
 # VISUALIZATION PARAMETERS
@@ -100,7 +148,7 @@ ENABLE_VISUALIZATION = True
 # Downsampling Parameters (GPU Voxel Grid)
 DOWNSAMPLING_ENABLED = True                # Enable/disable downsampling step
 # Voxel size for voxel grid method (meters)
-DOWNSAMPLING_VOXEL_SIZE = 0.01
+DOWNSAMPLING_VOXEL_SIZE = 0.0005
 
 # =============================================================================
 # PCA ANALYSIS PARAMETERS
